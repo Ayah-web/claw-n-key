@@ -2,27 +2,41 @@
 vault.py
 Main view shown after unlock: toolbar with search + category filter +
 theme toggle + lock button, and a scrollable list of entries.
+Now includes the virtual pet panel on the right side.
 """
 
 import flet as ft
 from .theme import ThemeManager, CATEGORY_COLORS
 from .widgets import category_chip, show_snack
 from .dialogs import entry_form_dialog, view_entry_dialog, generator_dialog
+from .cat_widget import CatWidget
+from .pet_panel import build_pet_panel
 
 
 def build_vault_view(page: ft.Page, api, theme: ThemeManager,
-                     on_logout, on_theme_toggle):
+                     on_logout, on_theme_toggle, pet=None):
     """
     on_logout: callback fired when user clicks Lock
     on_theme_toggle: callback to switch theme (handled at app level
                      because it needs to re-render everything)
+    pet: PetState instance (optional, for virtual pet integration)
     """
     filter_state = {"query": "", "category": "All"}
+
+    # ---------- Pet setup ----------
+
+    cat_widget = None
+    pet_panel = None
+    refresh_pet = None
+
+    if pet:
+        cat_widget = CatWidget(theme_mode=theme.mode, display_width=200, display_height=160)
+        pet_panel, refresh_pet = build_pet_panel(page, pet, cat_widget, theme)
 
     # ---------- Toolbar controls ----------
 
     search_field = ft.TextField(
-        hint_text="Search services or usernames…",
+        hint_text="Search services or usernames\u2026",
         prefix_icon=ft.Icons.SEARCH,
         border_radius=10,
         filled=True,
@@ -66,7 +80,7 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=8,
         ),
-        alignment=ft.Alignment.CENTER,
+        alignment=ft.Alignment(0, 0),
         padding=60,
     )
 
@@ -76,11 +90,9 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
         def on_click(_):
             view_entry_dialog(page, api, theme, e["id"], refresh)
 
-        # A colored left stripe by category + main content
         return ft.Container(
             content=ft.Row(
                 [
-                    # Category color stripe
                     ft.Container(width=4, bgcolor=cat_color, border_radius=2),
                     ft.Container(width=8),
                     ft.Column(
@@ -94,7 +106,7 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
                             ft.Row(
                                 [
                                     ft.Text(
-                                        e["username"] or "—",
+                                        e["username"] or "\u2014",
                                         size=12,
                                         color=theme.c["text_muted"],
                                     ),
@@ -154,6 +166,8 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
             entries_column.controls.append(empty_state)
         else:
             entries_column.controls.extend(entry_card(e) for e in filtered)
+        if refresh_pet:
+            refresh_pet()
         page.update()
 
     def on_search(e):
@@ -170,15 +184,23 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
     # ---------- Button handlers ----------
 
     def open_add(_):
-        entry_form_dialog(page, api, theme, refresh, existing=None)
+        entry_form_dialog(page, api, theme, refresh, existing=None, pet=pet,
+                          cat_widget=cat_widget, refresh_pet=refresh_pet)
 
     def open_generator(_):
         generator_dialog(page, api, theme)
 
     def toggle_theme(_):
+        if cat_widget:
+            cat_widget.set_theme("light" if theme.mode == "dark" else "dark")
         on_theme_toggle()
 
     def lock(_):
+        if cat_widget:
+            cat_widget.stop()
+            cat_widget.say("Bye bye! Stay safe!", 2.0)
+        if pet:
+            pet.save()
         on_logout()
 
     # ---------- Assemble ----------
@@ -240,21 +262,45 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
         spacing=10,
     )
 
-    view = ft.Container(
-        content=ft.Column(
+    # Left side: the original vault content
+    vault_content = ft.Column(
+        [
+            header,
+            ft.Container(height=8),
+            toolbar,
+            ft.Container(height=4),
+            actions,
+            ft.Container(height=8),
+            ft.Divider(color=theme.c["border"], height=1),
+            ft.Container(height=8),
+            entries_column,
+        ],
+        expand=True,
+    )
+
+    # Build the main layout: vault on left, pet panel on right
+    if pet_panel:
+        main_row = ft.Row(
             [
-                header,
-                ft.Container(height=8),
-                toolbar,
-                ft.Container(height=4),
-                actions,
-                ft.Container(height=8),
-                ft.Divider(color=theme.c["border"], height=1),
-                ft.Container(height=8),
-                entries_column,
+                ft.Container(content=vault_content, expand=True),
+                ft.Container(width=16),
+                ft.Container(
+                    content=ft.Column(
+                        [pet_panel],
+                        scroll=ft.ScrollMode.AUTO,
+                        expand=True,
+                    ),
+                    width=290,
+                ),
             ],
             expand=True,
-        ),
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        )
+    else:
+        main_row = vault_content
+
+    view = ft.Container(
+        content=main_row,
         padding=24,
         bgcolor=theme.c["bg"],
         expand=True,
@@ -262,4 +308,11 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
 
     # Populate on first render
     refresh()
+
+    # Start cat animation
+    if cat_widget:
+        cat_widget.start(page)
+        # Welcome message
+        cat_widget.say("Welcome back! Meow~", 3.0)
+
     return view

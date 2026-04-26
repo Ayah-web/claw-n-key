@@ -27,10 +27,14 @@ def _styled_textfield(label, theme: ThemeManager, **kwargs):
 
 
 def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
-                      existing=None):
+                      existing=None, pet=None, cat_widget=None,
+                      refresh_pet=None):
     """
     Single dialog for both 'Add' and 'Edit'.
     existing: None for new, or the entry dict from api.get_entry
+    pet: PetState instance (optional)
+    cat_widget: CatWidget instance (optional)
+    refresh_pet: callback to refresh pet panel (optional)
     """
     is_edit = existing is not None
 
@@ -68,6 +72,18 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
         if password.value:
             label = api.check_strength(password.value)
             strength_row.controls.append(strength_badge(label, theme))
+            # Show point preview
+            from backend.password_tools import strength_points
+            pts = strength_points(label)
+            if pts > 0:
+                strength_row.controls.append(
+                    ft.Text(
+                        f"+{pts}★",
+                        size=12,
+                        color="#e5c14a",
+                        weight=ft.FontWeight.W_600,
+                    )
+                )
         page.update()
 
     def on_pwd_change(_):
@@ -109,8 +125,32 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
         if not result["ok"]:
             show_snack(page, result["error"], error=True)
             return
+
+        # --- Award pet points ---
+        if pet and not is_edit:
+            pts = result.get("points", 0)
+            strength = result.get("strength", "")
+            if pts > 0:
+                pet.award_points(pts, reason=f"Added {service.value.strip()} ({strength})")
+                show_snack(page, f"🐱 +{pts} pet points! ({strength} password)")
+                if cat_widget:
+                    cat_widget.trigger_happy()
+                if refresh_pet:
+                    refresh_pet()
+            else:
+                show_snack(page, "Entry saved. (Weak password = no pet points 😿)")
+        elif pet and is_edit:
+            # Award 1 point for updating (encourages password rotation)
+            pet.award_points(1, reason=f"Updated {service.value.strip()}")
+            if cat_widget:
+                cat_widget.trigger_happy()
+            if refresh_pet:
+                refresh_pet()
+        # --- End pet points ---
+
         close_dialog(page, dlg)
-        show_snack(page, "Entry saved.")
+        if not pet or (pet and is_edit):
+            show_snack(page, "Entry saved.")
         on_saved()
 
     def cancel(_):
@@ -141,7 +181,6 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
         actions_alignment=ft.MainAxisAlignment.END,
     )
 
-    # Initialize strength badge for edit mode
     if is_edit and existing.get("password"):
         refresh_strength()
 
@@ -363,4 +402,4 @@ def generator_dialog(page, api, theme: ThemeManager):
         ],
     )
     open_dialog(page, dlg)
-    do_generate(None)  # Generate one on open
+    do_generate(None)
