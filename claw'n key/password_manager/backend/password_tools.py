@@ -1,6 +1,7 @@
 """
 password_tools.py
 Secure password generation and a 4-tier strength checker.
+Now includes numeric tier for gamification integration.
 """
 
 import secrets
@@ -10,6 +11,21 @@ import re
 SYMBOLS = "!@#$%^&*()-_=+[]{};:,.<>?"
 
 STRENGTH_TIERS = ["Bad", "Not Good", "Good", "Great"]
+
+# Tier colors for UI badges
+TIER_COLORS = {
+    0: "#c44054",   # Bad - red
+    1: "#b87518",   # Not Good - orange
+    2: "#2e8050",   # Good - green
+    3: "#6a3fb5",   # Great - purple
+}
+
+TIER_LABELS = {
+    0: "Bad",
+    1: "Not Good",
+    2: "Good",
+    3: "Great",
+}
 
 
 def generate_password(length: int = 16, use_symbols: bool = True) -> str:
@@ -35,7 +51,7 @@ def generate_password(length: int = 16, use_symbols: bool = True) -> str:
 
 
 def _score(password: str) -> int:
-    """Raw numeric score 0-7. Kept separate so gamification can use it later."""
+    """Raw numeric score 0-7."""
     if not password:
         return 0
     s = 0
@@ -58,6 +74,39 @@ def check_strength(password: str) -> str:
     return "Great"
 
 
+def strength_tier(password: str) -> int:
+    """
+    Return numeric tier: 0=Bad, 1=Not Good, 2=Good, 3=Great.
+    Used by the pet/reward system.
+    """
+    label = check_strength(password)
+    return {"Bad": 0, "Not Good": 1, "Good": 2, "Great": 3}.get(label, 0)
+
+
 def strength_points(label: str) -> int:
-    """Points awarded per strength tier. Hook for future pet/reward system."""
+    """Points awarded per strength tier."""
     return {"Bad": 0, "Not Good": 1, "Good": 3, "Great": 5}.get(label, 0)
+
+
+def strength_tips(password: str) -> list:
+    """Return list of tips to improve password strength."""
+    tips = []
+    if not password:
+        return ["Enter a password"]
+    if len(password) < 8:
+        tips.append("Use at least 8 characters")
+    if len(password) < 12:
+        tips.append("Try 12+ characters for better security")
+    if len(password) < 16:
+        tips.append("16+ characters is ideal")
+    if not re.search(r"[a-z]", password):
+        tips.append("Add lowercase letters")
+    if not re.search(r"[A-Z]", password):
+        tips.append("Add uppercase letters")
+    if not re.search(r"\d", password):
+        tips.append("Add numbers")
+    if not re.search(r"[^a-zA-Z0-9]", password):
+        tips.append("Add special characters (!@#$...)")
+    if len(password) >= 16 and not tips:
+        tips.append("Excellent password!")
+    return tips

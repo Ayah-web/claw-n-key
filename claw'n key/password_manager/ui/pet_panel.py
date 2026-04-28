@@ -1,19 +1,23 @@
 """
 pet_panel.py
-Side panel showing pet stats, mood, and interaction options.
-Integrates with the cat widget and pet state.
+Side panel showing pet stats, mood, interaction options,
+XP/level progress, coins, and inventory.
 """
 
 import flet as ft
 from .theme import ThemeManager
 from .widgets import show_snack
-from backend.pet import PetState, FEED_OPTIONS, PLAY_OPTIONS
+from backend.pet import (
+    PetState, FEED_OPTIONS, PLAY_OPTIONS,
+    xp_for_level, RARITY_EMOJI,
+)
 
 
 def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
     """Build the pet panel with stats, cat animation, and interaction buttons.
 
     Returns a ft.Container that can be placed in the vault layout.
+    Also returns refresh_panel callback.
     """
 
     # --- Stat bars ---
@@ -55,26 +59,76 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         spacing=8,
     )
 
-    # --- Points display ---
+    # --- XP / Level bar ---
 
-    points_display = ft.Container(
-        content=ft.Row(
+    def xp_bar():
+        current_xp, needed_xp = pet.xp_progress
+        return ft.Column(
             [
-                ft.Icon(ft.Icons.STAR_ROUNDED, color="#e5c14a", size=18),
-                ft.Text(
-                    f"{pet.points} points",
-                    size=14,
-                    weight=ft.FontWeight.W_600,
-                    color=theme.c["text"],
+                ft.Row(
+                    [
+                        ft.Text(f"\U0001f3c6 Level {pet.level}", size=13,
+                                weight=ft.FontWeight.BOLD,
+                                color=theme.c["primary"]),
+                        ft.Text(f"{current_xp}/{needed_xp} XP", size=11,
+                                color=theme.c["text_muted"]),
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                ),
+                ft.ProgressBar(
+                    value=pet.xp_percent,
+                    color=theme.c["primary"],
+                    bgcolor=theme.c["surface_2"],
+                    bar_height=6,
+                    border_radius=3,
+                ),
+            ],
+            spacing=2,
+        )
+
+    xp_container = xp_bar()
+
+    # --- Points and Coins display ---
+
+    def currency_display():
+        return ft.Row(
+            [
+                ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.STAR_ROUNDED, color="#e5c14a", size=16),
+                            ft.Text(f"{pet.points}", size=13,
+                                    weight=ft.FontWeight.W_600,
+                                    color=theme.c["text"]),
+                        ],
+                        spacing=4,
+                    ),
+                    bgcolor=theme.c["surface_2"],
+                    border_radius=8,
+                    padding=ft.padding.symmetric(horizontal=10, vertical=4),
+                    tooltip="Points (spend on feed/play)",
+                ),
+                ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Text("\U0001fa99", size=14),
+                            ft.Text(f"{pet.coins}", size=13,
+                                    weight=ft.FontWeight.W_600,
+                                    color=theme.c["text"]),
+                        ],
+                        spacing=4,
+                    ),
+                    bgcolor=theme.c["surface_2"],
+                    border_radius=8,
+                    padding=ft.padding.symmetric(horizontal=10, vertical=4),
+                    tooltip="Coins (earned from strong passwords)",
                 ),
             ],
             spacing=6,
             alignment=ft.MainAxisAlignment.CENTER,
-        ),
-        bgcolor=theme.c["surface_2"],
-        border_radius=8,
-        padding=ft.padding.symmetric(horizontal=12, vertical=6),
-    )
+        )
+
+    currency_row = currency_display()
 
     # --- Mood display ---
 
@@ -92,7 +146,7 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         text_align=ft.TextAlign.CENTER,
     )
 
-    # --- Pet name (editable) ---
+    # --- Pet name ---
 
     name_text = ft.Text(
         pet.pet_name,
@@ -102,51 +156,14 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         text_align=ft.TextAlign.CENTER,
     )
 
-    def on_name_click(_):
-        name_field = ft.TextField(
-            value=pet.pet_name,
-            text_size=14,
-            border_radius=8,
-            bgcolor=theme.c["surface_2"],
-            border_color=theme.c["border"],
-            focused_border_color=theme.c["primary"],
-            content_padding=ft.padding.symmetric(horizontal=10, vertical=6),
-        )
-
-        def save_name(_):
-            new_name = name_field.value.strip()
-            if new_name:
-                pet.pet_name = new_name
-                pet.save()
-                name_text.value = new_name
-                cat_widget.say(f"I'm {new_name} now!", 3.0)
-            dialog.open = False
-            page.update()
-
-        dialog = ft.AlertDialog(
-            title=ft.Text("Rename your cat", size=16),
-            content=name_field,
-            actions=[
-                ft.TextButton("Cancel",
-                              on_click=lambda _: setattr(dialog, 'open', False) or page.update()),
-                ft.FilledButton("Save", on_click=save_name),
-            ],
-        )
-        page.overlay.append(dialog)
-        dialog.open = True
-        page.update()
-
     name_row = ft.Container(
         content=ft.Row(
             [
                 name_text,
-                ft.Icon(ft.Icons.EDIT, size=14, color=theme.c["text_muted"]),
             ],
             spacing=4,
             alignment=ft.MainAxisAlignment.CENTER,
         ),
-        on_click=on_name_click,
-        tooltip="Click to rename",
     )
 
     # --- Pet button (free action) ---
@@ -261,40 +278,143 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         spacing=4,
     )
 
-    # --- Lifetime stats ---
+    # --- Inventory button ---
 
-    def lifetime_stats():
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Lifetime Stats", size=11, weight=ft.FontWeight.W_600,
-                            color=theme.c["text_muted"]),
-                    ft.Row([
-                        ft.Text(f"\U0001f4dd {pet.total_entries_added} entries", size=10,
+    def on_inventory_click(_):
+        _show_inventory_dialog()
+
+    def _show_inventory_dialog():
+        from .widgets import open_dialog, close_dialog
+
+        grouped = pet.get_inventory_by_rarity()
+
+        def _item_row(item):
+            emoji = RARITY_EMOJI.get(item["rarity"], "\u2b50")
+            rarity_colors = {
+                "common": theme.c["text_muted"],
+                "rare": "#4ea5dd",
+                "legendary": "#e5c14a",
+            }
+            return ft.Container(
+                content=ft.Row(
+                    [
+                        ft.Text(emoji, size=14),
+                        ft.Text(item["name"], size=12,
+                                color=theme.c["text"],
+                                weight=ft.FontWeight.W_600),
+                        ft.Text(f"({item['type']})", size=10,
                                 color=theme.c["text_muted"]),
-                        ft.Text(f"\u2b50 {pet.total_points_earned} pts", size=10,
-                                color=theme.c["text_muted"]),
-                    ], spacing=8, alignment=ft.MainAxisAlignment.CENTER),
-                    ft.Row([
-                        ft.Text(f"\U0001f372 {pet.times_fed}x fed", size=10,
-                                color=theme.c["text_muted"]),
-                        ft.Text(f"\U0001f3be {pet.times_played}x played", size=10,
-                                color=theme.c["text_muted"]),
-                    ], spacing=8, alignment=ft.MainAxisAlignment.CENTER),
-                    ft.Row([
-                        ft.Text(f"\U0001f43e {pet.times_petted}x petted", size=10,
-                                color=theme.c["text_muted"]),
-                    ], alignment=ft.MainAxisAlignment.CENTER),
-                ],
-                spacing=4,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            bgcolor=theme.c["surface_2"],
-            border_radius=8,
-            padding=8,
+                        ft.Container(expand=True),
+                        ft.Text(item["rarity"].title(), size=10,
+                                color=rarity_colors.get(item["rarity"],
+                                                         theme.c["text_muted"]),
+                                weight=ft.FontWeight.W_600),
+                    ],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                bgcolor=theme.c["surface_2"],
+                border=ft.border.all(1, theme.c["border"]),
+                border_radius=6,
+                padding=ft.padding.symmetric(horizontal=10, vertical=6),
+            )
+
+        items_list = ft.Column(spacing=4, scroll=ft.ScrollMode.AUTO, height=300)
+
+        if not pet.inventory:
+            items_list.controls.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Text("\U0001f4e6", size=32,
+                                    text_align=ft.TextAlign.CENTER),
+                            ft.Text("No items yet!", size=14,
+                                    color=theme.c["text_muted"],
+                                    text_align=ft.TextAlign.CENTER),
+                            ft.Text("Add 'Great' passwords to earn item drops!",
+                                    size=12, color=theme.c["text_muted"],
+                                    text_align=ft.TextAlign.CENTER),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=6,
+                    ),
+                    padding=30,
+                )
+            )
+        else:
+            # Show by rarity: legendary first
+            for rarity in ["legendary", "rare", "common"]:
+                items = grouped.get(rarity, [])
+                if items:
+                    items_list.controls.append(
+                        ft.Text(
+                            f"{RARITY_EMOJI.get(rarity, '')} {rarity.title()} ({len(items)})",
+                            size=12, weight=ft.FontWeight.W_600,
+                            color=theme.c["text_muted"],
+                        )
+                    )
+                    for item in items:
+                        items_list.controls.append(_item_row(item))
+
+        # Summary
+        summary = ft.Row(
+            [
+                ft.Text(f"\U0001f4e6 {pet.inventory_count} items", size=12,
+                        color=theme.c["text_muted"]),
+                ft.Container(expand=True),
+                ft.Text(
+                    f"\u2b50{len(grouped.get('common', []))} "
+                    f"\U0001f48e{len(grouped.get('rare', []))} "
+                    f"\U0001f451{len(grouped.get('legendary', []))}",
+                    size=11, color=theme.c["text_muted"],
+                ),
+            ],
         )
 
-    lifetime_container = lifetime_stats()
+        inv_dlg = ft.AlertDialog(
+            modal=True,
+            bgcolor=theme.c["surface"],
+            title=ft.Row(
+                [
+                    ft.Text("\U0001f392", size=20),
+                    ft.Text(f"{pet.pet_name}'s Inventory", color=theme.c["text"]),
+                ],
+                spacing=8,
+            ),
+            content=ft.Container(
+                width=400,
+                content=ft.Column(
+                    [summary, ft.Divider(color=theme.c["border"], height=1), items_list],
+                    spacing=8,
+                    tight=True,
+                ),
+            ),
+            actions=[
+                ft.TextButton(
+                    "Close",
+                    on_click=lambda _: close_dialog(page, inv_dlg),
+                ),
+            ],
+        )
+        open_dialog(page, inv_dlg)
+
+    inventory_btn = ft.Container(
+        content=ft.Row(
+            [
+                ft.Text("\U0001f392", size=14),
+                ft.Text(f"Inventory ({pet.inventory_count})", size=12,
+                        color=theme.c["text"],
+                        weight=ft.FontWeight.W_600),
+            ],
+            spacing=6,
+            alignment=ft.MainAxisAlignment.CENTER,
+        ),
+        bgcolor=theme.c["surface_2"],
+        border=ft.border.all(1, theme.c["border"]),
+        border_radius=8,
+        padding=ft.padding.symmetric(horizontal=12, vertical=6),
+        on_click=on_inventory_click,
+        ink=True,
+    )
 
     # --- Section headers ---
 
@@ -316,9 +436,11 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
             cat_widget.container,
             mood_text,
             ft.Divider(color=theme.c["border"], height=1),
+            xp_container,
+            currency_row,
+            ft.Divider(color=theme.c["border"], height=1),
             stats_column,
             ft.Divider(color=theme.c["border"], height=1),
-            points_display,
             pet_button,
             ft.Divider(color=theme.c["border"], height=1),
             section_header(ft.Icons.RESTAURANT, "Feed"),
@@ -327,7 +449,7 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
             section_header(ft.Icons.SPORTS_ESPORTS, "Play"),
             play_row,
             ft.Divider(color=theme.c["border"], height=1),
-            lifetime_container,
+            inventory_btn,
         ],
         spacing=8,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -354,20 +476,11 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
             stat_bar("Energy", pet.energy, "#4ea5dd", ft.Icons.BOLT),
         ]
 
-        # Update points
-        points_display.content = ft.Row(
-            [
-                ft.Icon(ft.Icons.STAR_ROUNDED, color="#e5c14a", size=18),
-                ft.Text(
-                    f"{pet.points} points",
-                    size=14,
-                    weight=ft.FontWeight.W_600,
-                    color=theme.c["text"],
-                ),
-            ],
-            spacing=6,
-            alignment=ft.MainAxisAlignment.CENTER,
-        )
+        # Update XP bar
+        xp_container.controls = xp_bar().controls
+
+        # Update currency
+        currency_row.controls = currency_display().controls
 
         # Update mood
         mood_text.value = f"{mood_emoji.get(pet.mood, chr(0x1f431))} {pet.mood.title()}"
@@ -381,8 +494,17 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         # Update play buttons
         play_row.controls = [make_play_button(name) for name in PLAY_OPTIONS]
 
-        # Update lifetime stats
-        lifetime_container.content = lifetime_stats().content
+        # Update inventory button
+        inventory_btn.content = ft.Row(
+            [
+                ft.Text("\U0001f392", size=14),
+                ft.Text(f"Inventory ({pet.inventory_count})", size=12,
+                        color=theme.c["text"],
+                        weight=ft.FontWeight.W_600),
+            ],
+            spacing=6,
+            alignment=ft.MainAxisAlignment.CENTER,
+        )
 
         page.update()
 

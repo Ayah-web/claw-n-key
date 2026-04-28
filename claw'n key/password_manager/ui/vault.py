@@ -2,26 +2,32 @@
 vault.py
 Main view shown after unlock: toolbar with search + category filter +
 theme toggle + lock button, and a scrollable list of entries.
-Now includes the virtual pet panel on the right side.
+Now includes: pet panel, favorites, stale badges, status bar,
+feedback button, settings button.
 """
 
 import flet as ft
 from .theme import ThemeManager, CATEGORY_COLORS
-from .widgets import category_chip, show_snack
+from .widgets import category_chip, show_snack, open_dialog, close_dialog
 from .dialogs import entry_form_dialog, view_entry_dialog, generator_dialog
 from .cat_widget import CatWidget
 from .pet_panel import build_pet_panel
+from .feedback_dialog import feedback_dialog
+from .settings_dialog import settings_dialog
+from .status_bar import build_status_bar
 
 
 def build_vault_view(page: ft.Page, api, theme: ThemeManager,
-                     on_logout, on_theme_toggle, pet=None):
+                     on_logout, on_theme_toggle, on_reset_account=None,
+                     pet=None, session_mgr=None):
     """
     on_logout: callback fired when user clicks Lock
-    on_theme_toggle: callback to switch theme (handled at app level
-                     because it needs to re-render everything)
-    pet: PetState instance (optional, for virtual pet integration)
+    on_theme_toggle: callback to switch theme
+    on_reset_account: callback to wipe everything and restart from splash
+    pet: PetState instance (optional)
+    session_mgr: SessionManager instance (optional)
     """
-    filter_state = {"query": "", "category": "All"}
+    filter_state = {"query": "", "category": "All", "favorites_only": False}
 
     # ---------- Pet setup ----------
 
@@ -30,13 +36,37 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
     refresh_pet = None
 
     if pet:
-        cat_widget = CatWidget(theme_mode=theme.mode, display_width=200, display_height=160)
+        cat_widget = CatWidget(
+            theme_mode=theme.mode,
+            display_width=200,
+            display_height=140,
+            scale=2,
+        )
         pet_panel, refresh_pet = build_pet_panel(page, pet, cat_widget, theme)
+
+    # ---------- Status bar ----------
+
+    status_bar, refresh_status, start_status, stop_status = build_status_bar(
+        page, api, pet, theme, session_mgr
+    )
+
+    # ---------- Stale password effect on pet ----------
+
+    def _apply_stale_effect():
+        if pet:
+            stale_count = api.get_stale_count()
+            if stale_count > 0:
+                pet.apply_stale_penalty(stale_count)
+                if cat_widget:
+                    if stale_count >= 3:
+                        cat_widget.say(f"{stale_count} stale passwords! 😿", 4.0)
+                    elif stale_count >= 1:
+                        cat_widget.say("Some passwords are getting old...", 3.0)
 
     # ---------- Toolbar controls ----------
 
     search_field = ft.TextField(
-        hint_text="Search services or usernames\u2026",
+        hint_text="Search services or usernames…",
         prefix_icon=ft.Icons.SEARCH,
         border_radius=10,
         filled=True,
@@ -59,6 +89,26 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
         content_padding=ft.padding.symmetric(horizontal=12, vertical=10),
         width=140,
     )
+
+    fav_button = ft.IconButton(
+        icon=ft.Icons.STAR_BORDER,
+        tooltip="Show favorites only",
+        icon_color=theme.c["text_muted"],
+    )
+
+    def toggle_favorites(_):
+        filter_state["favorites_only"] = not filter_state["favorites_only"]
+        if filter_state["favorites_only"]:
+            fav_button.icon = ft.Icons.STAR
+            fav_button.icon_color = "#e5c14a"
+            fav_button.tooltip = "Show all entries"
+        else:
+            fav_button.icon = ft.Icons.STAR_BORDER
+            fav_button.icon_color = theme.c["text_muted"]
+            fav_button.tooltip = "Show favorites only"
+        refresh()
+
+    fav_button.on_click = toggle_favorites
 
     theme_icon = (
         ft.Icons.LIGHT_MODE_OUTLINED if theme.mode == "dark"
@@ -86,9 +136,34 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
 
     def entry_card(e):
         cat_color = CATEGORY_COLORS.get(e["category"], theme.c["text_muted"])
+        is_fav = e.get("is_favorite", 0)
+        is_stale = e.get("is_stale", False)
 
         def on_click(_):
-            view_entry_dialog(page, api, theme, e["id"], refresh)
+            view_entry_dialog(page, api, theme, e["id"], refresh,
+                              pet=pet, cat_widget=cat_widget,
+                              refresh_pet=refresh_pet)
+
+        def on_fav_click(_):
+            result = api.toggle_favorite(e["id"])
+            if result["ok"]:
+                refresh()
+
+        badges = []
+        if is_fav:
+            badges.append(
+                ft.Icon(ft.Icons.STAR, color="#e5c14a", size=16)
+            )
+        if is_stale:
+            badges.append(
+                ft.Container(
+                    content=ft.Text("⏰ Stale", size=10, color="#ffffff",
+                                    weight=ft.FontWeight.BOLD),
+                    bgcolor="#FFA726",
+                    border_radius=6,
+                    padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                )
+            )
 
         return ft.Container(
             content=ft.Row(
@@ -97,16 +172,21 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
                     ft.Container(width=8),
                     ft.Column(
                         [
-                            ft.Text(
-                                e["service"],
-                                weight=ft.FontWeight.W_600,
-                                size=15,
-                                color=theme.c["text"],
+                            ft.Row(
+                                [
+                                    ft.Text(
+                                        e["service"],
+                                        weight=ft.FontWeight.W_600,
+                                        size=15,
+                                        color=theme.c["text"],
+                                    ),
+                                ] + badges,
+                                spacing=6,
                             ),
                             ft.Row(
                                 [
                                     ft.Text(
-                                        e["username"] or "\u2014",
+                                        e["username"] or "—",
                                         size=12,
                                         color=theme.c["text_muted"],
                                     ),
@@ -127,6 +207,13 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
                         spacing=2,
                         expand=True,
                     ),
+                    ft.IconButton(
+                        icon=ft.Icons.STAR if is_fav else ft.Icons.STAR_BORDER,
+                        icon_color="#e5c14a" if is_fav else theme.c["text_muted"],
+                        icon_size=18,
+                        tooltip="Toggle favorite",
+                        on_click=on_fav_click,
+                    ),
                     ft.Icon(ft.Icons.CHEVRON_RIGHT,
                             color=theme.c["text_muted"]),
                 ],
@@ -135,7 +222,10 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
             bgcolor=theme.c["surface"],
             padding=ft.padding.symmetric(horizontal=14, vertical=12),
             border_radius=10,
-            border=ft.border.all(1, theme.c["border"]),
+            border=ft.border.all(
+                1,
+                "#FFA726" if is_stale else theme.c["border"],
+            ),
             on_click=on_click,
             ink=True,
         )
@@ -143,9 +233,12 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
     def apply_filters(entries):
         q = filter_state["query"].lower().strip()
         cat = filter_state["category"]
+        fav_only = filter_state["favorites_only"]
         out = []
         for e in entries:
             if cat != "All" and e["category"] != cat:
+                continue
+            if fav_only and not e.get("is_favorite", 0):
                 continue
             if q:
                 haystack = (e["service"] + " " + (e["username"] or "")).lower()
@@ -168,6 +261,7 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
             entries_column.controls.extend(entry_card(e) for e in filtered)
         if refresh_pet:
             refresh_pet()
+        refresh_status()
         page.update()
 
     def on_search(e):
@@ -190,18 +284,35 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
     def open_generator(_):
         generator_dialog(page, api, theme)
 
+    def open_feedback(_):
+        feedback_dialog(page, api, theme)
+
+    def open_settings(_):
+        settings_dialog(
+            page, api, pet, theme, session_mgr,
+            on_theme_toggle, cat_widget, refresh_pet,
+            on_reset_account=on_reset_account,
+        )
+
     def toggle_theme(_):
         if cat_widget:
             cat_widget.set_theme("light" if theme.mode == "dark" else "dark")
         on_theme_toggle()
 
     def lock(_):
+        stop_status()
         if cat_widget:
             cat_widget.stop()
             cat_widget.say("Bye bye! Stay safe!", 2.0)
         if pet:
             pet.save()
         on_logout()
+
+    def on_keyboard(e):
+        if session_mgr:
+            session_mgr.touch()
+
+    page.on_keyboard_event = on_keyboard
 
     # ---------- Assemble ----------
 
@@ -216,6 +327,18 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
                 spacing=8,
             ),
             ft.Container(expand=True),
+            ft.IconButton(
+                icon=ft.Icons.FEEDBACK_OUTLINED,
+                tooltip="Feedback & Notes",
+                icon_color=theme.c["text_muted"],
+                on_click=open_feedback,
+            ),
+            ft.IconButton(
+                icon=ft.Icons.SETTINGS_OUTLINED,
+                tooltip="Settings",
+                icon_color=theme.c["text_muted"],
+                on_click=open_settings,
+            ),
             ft.IconButton(
                 icon=theme_icon,
                 tooltip="Toggle theme",
@@ -233,7 +356,7 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
     )
 
     toolbar = ft.Row(
-        [search_field, category_filter],
+        [search_field, category_filter, fav_button],
         spacing=10,
     )
 
@@ -262,7 +385,6 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
         spacing=10,
     )
 
-    # Left side: the original vault content
     vault_content = ft.Column(
         [
             header,
@@ -278,7 +400,6 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
         expand=True,
     )
 
-    # Build the main layout: vault on left, pet panel on right
     if pet_panel:
         main_row = ft.Row(
             [
@@ -299,20 +420,27 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
     else:
         main_row = vault_content
 
-    view = ft.Container(
-        content=main_row,
-        padding=24,
-        bgcolor=theme.c["bg"],
+    view = ft.Column(
+        [
+            ft.Container(
+                content=main_row,
+                padding=24,
+                bgcolor=theme.c["bg"],
+                expand=True,
+            ),
+            status_bar,
+        ],
+        spacing=0,
         expand=True,
     )
 
-    # Populate on first render
     refresh()
+    _apply_stale_effect()
 
-    # Start cat animation
     if cat_widget:
         cat_widget.start(page)
-        # Welcome message
         cat_widget.say("Welcome back! Meow~", 3.0)
+
+    start_status()
 
     return view

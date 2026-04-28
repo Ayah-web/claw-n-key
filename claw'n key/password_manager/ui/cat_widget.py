@@ -1,33 +1,24 @@
 """
 cat_widget.py
 Animated virtual pet cat for Flet using catode32 sprite data.
-Renders monochrome sprites to a PNG each frame, displayed as ft.Image.
+Uses flet.canvas for fast, crisp pixel-art rendering — no PNG encoding needed.
 """
 
-import sys
-import base64
-import struct
-import zlib
 import random
 import threading
 import asyncio
-import time
 
 import flet as ft
+import flet.canvas as cv
 
-# Add catode32 source for sprite data
-CATODE_SRC = r"C:\Users\lunaa\Desktop\catode32-master\src"
-if CATODE_SRC not in sys.path:
-    sys.path.insert(0, CATODE_SRC)
-
-from assets.character import POSES
-from sprite_transform import mirror_sprite_h
+from backend.catode.assets.character import POSES
+from backend.catode.sprite_transform import mirror_sprite_h
 
 
-# --- Pixel Canvas ---
+# --- Pixel Canvas (logical buffer only) ---
 
 class PixelCanvas:
-    """Small monochrome pixel buffer that exports to PNG."""
+    """Small monochrome pixel buffer — no PNG, just raw pixel data."""
 
     def __init__(self, width, height):
         self.width = width
@@ -62,33 +53,26 @@ class PixelCanvas:
                     continue
                 self.set_pixel(x + px, y + py, pixel)
 
-    def to_base64_png(self, fg_color=(255, 255, 255), bg_color=None):
-        """Export as base64-encoded PNG with transparency support."""
-        w, h = self.width, self.height
-        raw = bytearray()
+    def get_lit_runs(self):
+        """
+        Return horizontal runs of lit pixels as (x, y, length).
+        Much more efficient than individual pixels — reduces draw calls dramatically.
+        """
+        runs = []
+        w = self.width
+        h = self.height
         for y in range(h):
-            raw.append(0)
-            for x in range(w):
-                if self.pixels[y * w + x]:
-                    raw.extend(fg_color)
-                    raw.append(255)
+            row_start = y * w
+            x = 0
+            while x < w:
+                if self.pixels[row_start + x]:
+                    run_x = x
+                    while x < w and self.pixels[row_start + x]:
+                        x += 1
+                    runs.append((run_x, y, x - run_x))
                 else:
-                    if bg_color:
-                        raw.extend(bg_color)
-                        raw.append(255)
-                    else:
-                        raw.extend((0, 0, 0, 0))
-
-        def chunk(ctype, data):
-            c = ctype + data
-            crc = struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
-            return struct.pack(">I", len(data)) + c + crc
-
-        sig = b'\x89PNG\r\n\x1a\n'
-        ihdr = struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)
-        idat = zlib.compress(bytes(raw), 9)
-        png = sig + chunk(b'IHDR', ihdr) + chunk(b'IDAT', idat) + chunk(b'IEND', b'')
-        return base64.b64encode(png).decode()
+                    x += 1
+        return runs
 
 
 # --- Cat Animation State ---
@@ -199,7 +183,8 @@ class CatAnimator:
         if self._pose_timer >= self._next_switch:
             self._pose_timer = 0.0
             self._next_switch = random.uniform(6, 15)
-            if self._pose_list:
+            # Only switch poses if more than one is available
+            if len(self._pose_list) > 1:
                 self._set_pose(random.choice(self._pose_list))
             if random.random() < 0.3:
                 self.mirror = not self.mirror
@@ -266,46 +251,48 @@ class CatAnimator:
                                        sx, sy)
 
 
-# --- Flet Widget ---
+# --- Flet Widget using Canvas ---
 
 class CatWidget:
     """
-    Animated cat widget for Flet.
+    Animated cat widget for Flet using flet.canvas for crisp pixel rendering.
+
+    Instead of encoding PNGs every frame, we draw scaled rectangles
+    directly on a Flet Canvas — same approach as the Pygame renderer
+    but using Flet's native drawing API.
 
     Usage:
-        cat = CatWidget(theme_mode="dark")
+        cat = CatWidget(theme_mode="dark", scale=3)
         page.add(cat.container)
         cat.start(page)
     """
 
-    def __init__(self, theme_mode="dark", display_width=200, display_height=160):
+    def __init__(self, theme_mode="dark", display_width=200, display_height=160,
+                 scale=3, initial_poses=None):
         self._canvas_w = 80
         self._canvas_h = 64
-        self._canvas = PixelCanvas(self._canvas_w, self._canvas_h)
-        self._animator = CatAnimator()
+        self._scale = scale
+        self._display_width = display_width
+        self._display_height = display_height
+        self._pixel_buf = PixelCanvas(self._canvas_w, self._canvas_h)
+        self._animator = CatAnimator(pose_list=initial_poses)
         self._theme_mode = theme_mode
         self._running = False
-        self._task = None
         self._page = None
         self._speech = ""
         self._speech_timer = 0.0
 
-        # Handle different Flet versions
-        try:
-            img_fit = ft.ImageFit.CONTAIN
-        except AttributeError:
-            img_fit = "contain"
+        # Calculate offsets to center the sprite in the display area
+        rendered_w = self._canvas_w * scale
+        rendered_h = self._canvas_h * scale
+        self._offset_x = (display_width - rendered_w) / 2
+        self._offset_y = (display_height - rendered_h) / 2
 
-        # Render first frame BEFORE creating Image
-        self._canvas.clear()
-        self._animator.render(self._canvas, self._canvas_w // 2, self._canvas_h - 4)
-        first_frame = self._canvas.to_base64_png(fg_color=self._fg_color())
-
-        self._image = ft.Image(
-            src=f"data:image/png;base64,{first_frame}",
+        # The flet canvas control
+        self._flet_canvas = cv.Canvas(
             width=display_width,
             height=display_height,
-            fit=img_fit,
+            shapes=[],
         )
 
         # Speech bubble text
@@ -327,7 +314,7 @@ class CatWidget:
             content=ft.Column(
                 [
                     self._speech_container,
-                    self._image,
+                    self._flet_canvas,
                 ],
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=4,
@@ -336,16 +323,42 @@ class CatWidget:
             alignment=ft.Alignment(0, 0),
         )
 
-    def _fg_color(self):
+    def _fg_hex(self):
         if self._theme_mode == "dark":
-            return (225, 220, 240)
-        return (60, 50, 80)
+            return "#E1DCF0"
+        return "#3C3250"
 
     def _render_frame(self):
-        self._canvas.clear()
-        self._animator.render(self._canvas, self._canvas_w // 2, self._canvas_h - 4)
-        b64 = self._canvas.to_base64_png(fg_color=self._fg_color())
-        self._image.src = f"data:image/png;base64,{b64}"
+        """Render the current frame to the flet canvas using rectangles."""
+        self._pixel_buf.clear()
+        self._animator.render(
+            self._pixel_buf, self._canvas_w // 2, self._canvas_h - 4
+        )
+
+        s = self._scale
+        ox = self._offset_x
+        oy = self._offset_y
+        fg = self._fg_hex()
+
+        paint = ft.Paint(
+            color=fg,
+            style=ft.PaintingStyle.FILL,
+            anti_alias=False,
+        )
+
+        shapes = []
+        for rx, ry, run_len in self._pixel_buf.get_lit_runs():
+            shapes.append(
+                cv.Rect(
+                    x=ox + rx * s,
+                    y=oy + ry * s,
+                    width=run_len * s,
+                    height=s,
+                    paint=paint,
+                )
+            )
+
+        self._flet_canvas.shapes = shapes
 
     def set_theme(self, mode):
         self._theme_mode = mode
@@ -361,14 +374,14 @@ class CatWidget:
         self._speech_container.visible = True
 
     def start(self, page):
-        """Start the animation loop using page.run_task for reliable updates."""
+        """Start the animation loop."""
         if self._running:
             return
         self._page = page
         self._running = True
 
         async def _async_loop():
-            fps = 8
+            fps = 12
             interval = 1.0 / fps
             idle_sayings = [
                 "Mrrp?", "Purrr~", "*yawn*", "*stretches*",
@@ -409,11 +422,9 @@ class CatWidget:
 
                 await asyncio.sleep(interval)
 
-        # Use page.run_task if available, otherwise fall back to threading
         if hasattr(page, "run_task"):
             page.run_task(_async_loop)
         else:
-            # Fallback for older Flet
             def _thread_loop():
                 loop = asyncio.new_event_loop()
                 loop.run_until_complete(_async_loop())
@@ -426,7 +437,6 @@ class CatWidget:
         self._page = None
 
     def trigger_happy(self):
-        """Briefly show a happy pose."""
         happy = [
             "sitting.side.happy",
             "sitting.forward.happy",
@@ -442,7 +452,6 @@ class CatWidget:
         self.say(random.choice(happy_msgs), 3.0)
 
     def trigger_play(self):
-        """Briefly show an energetic pose after playing."""
         play_poses = [
             "standing.side.happy",
             "sitting.side.happy",
@@ -458,7 +467,6 @@ class CatWidget:
         self.say(random.choice(play_msgs), 3.0)
 
     def trigger_pet(self):
-        """React to being petted."""
         self._animator._set_pose("sitting.forward.happy")
         self._animator._pose_timer = 0.0
         self._animator._next_switch = 3.0
@@ -469,7 +477,6 @@ class CatWidget:
         self.say(random.choice(pet_msgs), 3.0)
 
     def trigger_password_added(self):
-        """React when user adds a new password."""
         msgs = [
             "Good job! +points!", "Secure! *approves*",
             "Nya! More treats soon?", "*watches proudly*",

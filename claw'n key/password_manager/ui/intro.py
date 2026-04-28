@@ -112,7 +112,7 @@ def build_intro_view(page: ft.Page, pet, theme: ThemeManager, on_complete):
         await asyncio.sleep(0.5)
 
         # Step 1: Show title
-        title_text.value = "\U0001f43e Claw & Key \U0001f511"
+        title_text.value = "\U0001f43e Claw'n Key \U0001f511"
         page.update()
         await asyncio.sleep(0.8)
 
