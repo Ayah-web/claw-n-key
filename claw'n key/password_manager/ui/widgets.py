@@ -16,21 +16,18 @@ from .theme import ThemeManager, CATEGORY_COLORS
 
 def open_dialog(page: ft.Page, dialog):
     """Open a dialog across Flet versions."""
-    # 0.84+: show_dialog / pop_dialog
     if hasattr(page, "show_dialog"):
         try:
             page.show_dialog(dialog)
             return
         except Exception:
             pass
-    # 0.21 - 0.83: page.open()
     if hasattr(page, "open"):
         try:
             page.open(dialog)
             return
         except Exception:
             pass
-    # Overlay approach (Flet 0.84 AlertDialog)
     try:
         if dialog not in page.overlay:
             page.overlay.append(dialog)
@@ -39,7 +36,6 @@ def open_dialog(page: ft.Page, dialog):
         return
     except Exception:
         pass
-    # pre-0.21: assign + set open flag
     page.dialog = dialog
     dialog.open = True
     page.update()
@@ -59,7 +55,6 @@ def close_dialog(page: ft.Page, dialog=None):
             return
         except Exception:
             pass
-    # Overlay approach
     if dialog is not None:
         try:
             dialog.open = False
@@ -76,14 +71,12 @@ def close_dialog(page: ft.Page, dialog=None):
 
 def set_clipboard(page: ft.Page, text: str):
     """Copy text to the system clipboard. Uses pyperclip for reliability."""
-    # Try pyperclip first — most reliable on desktop
     try:
         import pyperclip
         pyperclip.copy(text)
         return
     except Exception:
         pass
-    # Flet fallbacks
     if hasattr(page, "set_clipboard"):
         try:
             page.set_clipboard(text)
@@ -96,6 +89,7 @@ def set_clipboard(page: ft.Page, text: str):
         page.update()
     except Exception:
         pass
+
 
 # ---------- Visual widgets ----------
 
@@ -152,14 +146,9 @@ def favorite_star(is_favorite: bool, theme: ThemeManager,
 def reward_snack(page: ft.Page, reward: dict, pet_name: str = "Cat"):
     """
     Show a rich snack bar for pet rewards.
-    reward dict keys: coins_earned, xp_earned, level_ups, item_drop,
-                      bonus_coins, bonus_xp
+    reward dict keys: xp_earned, level_ups, item_drop, bonus_xp
     """
     parts = []
-
-    coins = reward.get("coins_earned", 0) + reward.get("bonus_coins", 0)
-    if coins > 0:
-        parts.append(f"\U0001fa99 +{coins} coins")
 
     xp = reward.get("xp_earned", 0) + reward.get("bonus_xp", 0)
     if xp > 0:
@@ -168,8 +157,7 @@ def reward_snack(page: ft.Page, reward: dict, pet_name: str = "Cat"):
     level_ups = reward.get("level_ups", [])
     if level_ups:
         new_level = level_ups[-1]["new_level"]
-        bonus = sum(lu["bonus_coins"] for lu in level_ups)
-        parts.append(f"\U0001f389 Level {new_level}! (+{bonus} bonus coins)")
+        parts.append(f"\U0001f389 Level {new_level}!")
 
     item_drop = reward.get("item_drop")
     if item_drop:
@@ -190,8 +178,6 @@ def show_snack(page: ft.Page, msg: str, error: bool = False):
         bgcolor="#c44054" if error else "#2e8050",
         duration=2500,
     )
-    # 0.84+: SnackBar is a DialogControl, shown via show_dialog / open
-    # Older: page.snack_bar = snack; snack.open = True
     if hasattr(page, "show_dialog"):
         try:
             page.show_dialog(snack)
@@ -204,7 +190,6 @@ def show_snack(page: ft.Page, msg: str, error: bool = False):
             return
         except Exception:
             pass
-    # Overlay approach
     try:
         page.overlay.append(snack)
         snack.open = True
@@ -212,10 +197,9 @@ def show_snack(page: ft.Page, msg: str, error: bool = False):
         return
     except Exception:
         pass
-    # Pre-0.21 fallback
     try:
         page.snack_bar = snack
         snack.open = True
         page.update()
     except Exception:
-        pass  # Best effort - snackbar is non-critical
+        pass

@@ -1,7 +1,7 @@
 """
 status_bar.py
 Bottom status bar for Claw'n Key.
-Shows encryption status, session timer, stale password count, pet level, and coins.
+Shows encryption status, session timer, stale password count, pet level, and points.
 """
 
 import flet as ft
@@ -12,7 +12,7 @@ from .theme import ThemeManager
 def build_status_bar(page, api, pet, theme: ThemeManager, session_mgr=None):
     """
     Build the bottom status bar.
-    Returns (container, refresh_fn).
+    Returns (container, refresh_fn, start_fn, stop_fn).
     """
 
     encryption_text = ft.Text(
@@ -41,13 +41,6 @@ def build_status_bar(page, api, pet, theme: ThemeManager, session_mgr=None):
         weight=ft.FontWeight.W_600,
     )
 
-    coins_text = ft.Text(
-        "",
-        size=11,
-        color="#e5c14a",
-        weight=ft.FontWeight.W_600,
-    )
-
     points_text = ft.Text(
         "",
         size=11,
@@ -62,8 +55,6 @@ def build_status_bar(page, api, pet, theme: ThemeManager, session_mgr=None):
                 stale_text,
                 ft.Container(expand=True),
                 pet_level_text,
-                ft.VerticalDivider(width=1, color=theme.c["border"]),
-                coins_text,
                 ft.VerticalDivider(width=1, color=theme.c["border"]),
                 points_text,
                 ft.VerticalDivider(width=1, color=theme.c["border"]),
@@ -92,11 +83,9 @@ def build_status_bar(page, api, pet, theme: ThemeManager, session_mgr=None):
         # Pet info
         if pet:
             pet_level_text.value = f"\U0001f43e Lv.{pet.level}"
-            coins_text.value = f"\U0001fa99 {pet.coins}"
             points_text.value = f"\u2b50 {pet.points} pts"
         else:
             pet_level_text.value = ""
-            coins_text.value = ""
             points_text.value = ""
 
         # Session timer

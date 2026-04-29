@@ -8,7 +8,7 @@ feedback button, settings button.
 
 import flet as ft
 from .theme import ThemeManager, CATEGORY_COLORS
-from .widgets import category_chip, show_snack, open_dialog, close_dialog
+from .widgets import show_snack
 from .dialogs import entry_form_dialog, view_entry_dialog, generator_dialog
 from .cat_widget import CatWidget
 from .pet_panel import build_pet_panel
@@ -20,13 +20,7 @@ from .status_bar import build_status_bar
 def build_vault_view(page: ft.Page, api, theme: ThemeManager,
                      on_logout, on_theme_toggle, on_reset_account=None,
                      pet=None, session_mgr=None):
-    """
-    on_logout: callback fired when user clicks Lock
-    on_theme_toggle: callback to switch theme
-    on_reset_account: callback to wipe everything and restart from splash
-    pet: PetState instance (optional)
-    session_mgr: SessionManager instance (optional)
-    """
+
     filter_state = {"query": "", "category": "All", "favorites_only": False}
 
     # ---------- Pet setup ----------
@@ -63,38 +57,51 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
                     elif stale_count >= 1:
                         cat_widget.say("Some passwords are getting old...", 3.0)
 
-    # ---------- Toolbar controls ----------
+    # ---------- Filter logic ----------
 
-    search_field = ft.TextField(
-        hint_text="Search services or usernames…",
-        prefix_icon=ft.Icons.SEARCH,
-        border_radius=10,
-        filled=True,
-        bgcolor=theme.c["surface_2"],
-        border_color=theme.c["border"],
-        focused_border_color=theme.c["primary"],
-        content_padding=ft.padding.symmetric(horizontal=12, vertical=10),
-        expand=True,
-    )
+    def apply_filters(entries):
+        q = filter_state["query"].lower().strip()
+        cat = filter_state["category"]
+        fav_only = filter_state["favorites_only"]
+        out = []
+        for e in entries:
+            if cat != "All" and e["category"] != cat:
+                continue
+            if fav_only and not e.get("is_favorite", 0):
+                continue
+            if q:
+                haystack = (e["service"] + " " + (e["username"] or "")).lower()
+                if q not in haystack:
+                    continue
+            out.append(e)
+        return out
 
-    category_filter = ft.Dropdown(
-        value="All",
-        options=[ft.dropdown.Option("All")] +
-                [ft.dropdown.Option(c) for c in api.categories()],
-        border_radius=10,
-        filled=True,
-        bgcolor=theme.c["surface_2"],
-        border_color=theme.c["border"],
-        focused_border_color=theme.c["primary"],
-        content_padding=ft.padding.symmetric(horizontal=12, vertical=10),
-        width=140,
-    )
+    def refresh():
+        res = api.list_entries()
+        if not res["ok"]:
+            show_snack(page, res.get("error", "Failed to load entries."),
+                       error=True)
+            return
+        entries_column.controls.clear()
+        filtered = apply_filters(res["entries"])
+        if not filtered:
+            entries_column.controls.append(empty_state)
+        else:
+            entries_column.controls.extend(entry_card(e) for e in filtered)
+        if refresh_pet:
+            refresh_pet()
+        refresh_status()
+        page.update()
 
-    fav_button = ft.IconButton(
-        icon=ft.Icons.STAR_BORDER,
-        tooltip="Show favorites only",
-        icon_color=theme.c["text_muted"],
-    )
+    # ---------- Toolbar handlers — defined BEFORE controls ----------
+
+    def on_search(e):
+        filter_state["query"] = e.control.value
+        refresh()
+
+    def on_category(e):
+        filter_state["category"] = e.control.value or "All"
+        refresh()
 
     def toggle_favorites(_):
         filter_state["favorites_only"] = not filter_state["favorites_only"]
@@ -108,7 +115,43 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
             fav_button.tooltip = "Show favorites only"
         refresh()
 
-    fav_button.on_click = toggle_favorites
+    # ---------- Toolbar controls ----------
+
+    search_field = ft.TextField(
+        hint_text="Search services or usernames…",
+        prefix_icon=ft.Icons.SEARCH,
+        border_radius=10,
+        filled=True,
+        bgcolor=theme.c["surface_2"],
+        border_color=theme.c["border"],
+        focused_border_color=theme.c["primary"],
+        content_padding=ft.padding.symmetric(horizontal=12, vertical=10),
+        on_change=on_search,
+        expand=True,
+    )
+
+    # ✅ DropdownM2 styled to match search_field using theme tokens
+    category_filter = ft.DropdownM2(
+        value="All",
+        options=[ft.dropdownm2.Option(key="All", text="All")] +
+                [ft.dropdownm2.Option(key=c, text=c) for c in api.categories()],
+        on_change=on_category,
+        width=140,
+        border_radius=10,
+        filled=True,
+        bgcolor=theme.c["surface_2"],
+        border_color=theme.c["border"],
+        focused_border_color=theme.c["primary"],
+        color=theme.c["text"],
+        content_padding=ft.padding.symmetric(horizontal=12, vertical=10),
+    )
+
+    fav_button = ft.IconButton(
+        icon=ft.Icons.STAR_BORDER,
+        tooltip="Show favorites only",
+        icon_color=theme.c["text_muted"],
+        on_click=toggle_favorites,
+    )
 
     theme_icon = (
         ft.Icons.LIGHT_MODE_OUTLINED if theme.mode == "dark"
@@ -118,6 +161,7 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
     # ---------- Entry list ----------
 
     entries_column = ft.Column(spacing=8, scroll=ft.ScrollMode.AUTO, expand=True)
+
     empty_state = ft.Container(
         content=ft.Column(
             [
@@ -151,9 +195,7 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
 
         badges = []
         if is_fav:
-            badges.append(
-                ft.Icon(ft.Icons.STAR, color="#e5c14a", size=16)
-            )
+            badges.append(ft.Icon(ft.Icons.STAR, color="#e5c14a", size=16))
         if is_stale:
             badges.append(
                 ft.Container(
@@ -214,66 +256,17 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
                         tooltip="Toggle favorite",
                         on_click=on_fav_click,
                     ),
-                    ft.Icon(ft.Icons.CHEVRON_RIGHT,
-                            color=theme.c["text_muted"]),
+                    ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.c["text_muted"]),
                 ],
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             bgcolor=theme.c["surface"],
             padding=ft.padding.symmetric(horizontal=14, vertical=12),
             border_radius=10,
-            border=ft.border.all(
-                1,
-                "#FFA726" if is_stale else theme.c["border"],
-            ),
+            border=ft.border.all(1, "#FFA726" if is_stale else theme.c["border"]),
             on_click=on_click,
             ink=True,
         )
-
-    def apply_filters(entries):
-        q = filter_state["query"].lower().strip()
-        cat = filter_state["category"]
-        fav_only = filter_state["favorites_only"]
-        out = []
-        for e in entries:
-            if cat != "All" and e["category"] != cat:
-                continue
-            if fav_only and not e.get("is_favorite", 0):
-                continue
-            if q:
-                haystack = (e["service"] + " " + (e["username"] or "")).lower()
-                if q not in haystack:
-                    continue
-            out.append(e)
-        return out
-
-    def refresh():
-        res = api.list_entries()
-        if not res["ok"]:
-            show_snack(page, res.get("error", "Failed to load entries."),
-                       error=True)
-            return
-        entries_column.controls.clear()
-        filtered = apply_filters(res["entries"])
-        if not filtered:
-            entries_column.controls.append(empty_state)
-        else:
-            entries_column.controls.extend(entry_card(e) for e in filtered)
-        if refresh_pet:
-            refresh_pet()
-        refresh_status()
-        page.update()
-
-    def on_search(e):
-        filter_state["query"] = e.control.value
-        refresh()
-
-    def on_category(e):
-        filter_state["category"] = e.control.value
-        refresh()
-
-    search_field.on_change = on_search
-    category_filter.on_change = on_category
 
     # ---------- Button handlers ----------
 

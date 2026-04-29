@@ -31,17 +31,17 @@ DARK = {
 # ---------- Light (pastel) ----------
 
 LIGHT = {
-    "bg":          "#faf7ff",  # soft lavender white
+    "bg":          "#fff5f8",  # barely-there pink white
     "bg_elev":    "#ffffff",
-    "surface":    "#f3edfe",  # light lavender
-    "surface_2":  "#ede4fc",
-    "primary":    "#9d7ed1",  # muted pastel purple
-    "primary_2":  "#b89fe0",
-    "accent":     "#8566b8",
-    "text":       "#2d2a3e",
-    "text_muted": "#7b7890",
-    "border":     "#e4dcf5",
-    "danger":     "#d87282",
+    "surface":    "#ffe4ed",  # soft blush pink
+    "surface_2":  "#ffd0e0",  # slightly deeper blush
+    "primary":    "#e8789a",  # baby pink
+    "primary_2":  "#f0a0b8",  # lighter pink
+    "accent":     "#d4607e",  # deeper rose
+    "text":       "#3d2530",  # dark warm text
+    "text_muted": "#a07080",  # muted rose text
+    "border":     "#f5c0d0",  # delicate pink border
+    "danger":     "#c05070",  # rose red
 }
 
 
@@ -49,7 +49,7 @@ LIGHT = {
 
 STRENGTH_COLORS = {
     "dark": {
-        "Bad":      ("#ff6b7a", "#3d1520"),  # (fg, bg)
+        "Bad":      ("#ff6b7a", "#3d1520"),
         "Not Good": ("#ffc48a", "#3d2815"),
         "Good":     ("#9affb5", "#153d28"),
         "Great":    ("#c49aff", "#2b1e4a"),
@@ -58,7 +58,7 @@ STRENGTH_COLORS = {
         "Bad":      ("#c44054", "#fde4e8"),
         "Not Good": ("#b87518", "#fdf0dd"),
         "Good":     ("#2e8050", "#e1f5ea"),
-        "Great":    ("#6a3fb5", "#ede0fc"),
+        "Great":    ("#e8789a", "#ffe4ed"),  # pink instead of purple!
     },
 }
 

@@ -196,10 +196,7 @@ def main(page: ft.Page):
 
     render()
 
-
 if __name__ == "__main__":
     runner = getattr(ft, "run", None)
     if runner is not None:
         runner(main)
-    else:
-        ft.app(target=main)

@@ -1,11 +1,10 @@
 """
 pet.py
-Virtual pet state: hunger, happiness, energy, XP, level, coins, inventory.
+Virtual pet state: hunger, happiness, energy, XP, level, inventory.
 Persisted to a small JSON file alongside the vault database.
 
 Points are earned by adding/updating passwords (stronger = more points).
 Points can be spent to feed/play with the cat.
-Coins are earned from strong passwords and level-ups.
 XP drives the leveling system.
 Item drops happen every 5 great passwords or when updating stale ones.
 """
@@ -14,7 +13,6 @@ import json
 import os
 import time
 import random
-import math
 
 _PET_FILE = os.path.join(os.path.dirname(__file__), "..", "pet_save.json")
 _PET_FILE = os.path.normpath(_PET_FILE)
@@ -150,7 +148,6 @@ class PetState:
         self.happiness = 50.0
         self.energy = 50.0
         self.points = 10
-        self.coins = 0
         self.xp = 0
         self.level = 1
         self.total_points_earned = 0
@@ -172,7 +169,6 @@ class PetState:
             "happiness": 50.0,
             "energy": 50.0,
             "points": 10,
-            "coins": 0,
             "xp": 0,
             "level": 1,
             "total_points_earned": 0,
@@ -197,7 +193,6 @@ class PetState:
                 self.happiness = data.get("happiness", 50.0)
                 self.energy = data.get("energy", 50.0)
                 self.points = data.get("points", 10)
-                self.coins = data.get("coins", 0)
                 self.xp = data.get("xp", 0)
                 self.level = data.get("level", 1)
                 self.total_points_earned = data.get("total_points_earned", 0)
@@ -224,7 +219,6 @@ class PetState:
                 "happiness": round(self.happiness, 2),
                 "energy": round(self.energy, 2),
                 "points": self.points,
-                "coins": self.coins,
                 "xp": self.xp,
                 "level": self.level,
                 "total_points_earned": self.total_points_earned,
@@ -284,13 +278,9 @@ class PetState:
         while self.xp >= xp_for_level(self.level + 1):
             self.xp -= xp_for_level(self.level + 1)
             self.level += 1
-            # Level up bonus
-            bonus_coins = 10 + (self.level * 2)
-            self.coins += bonus_coins
             self.happiness = min(100.0, self.happiness + 10)
             events.append({
                 "new_level": self.level,
-                "bonus_coins": bonus_coins,
             })
         return events
 
@@ -307,18 +297,14 @@ class PetState:
         """
         Award points from password actions.
         strength_tier: 0=Bad, 1=Not Good, 2=Good, 3=Great
-        Returns reward dict with coins, xp, level_ups, item_drop info.
+        Returns reward dict with xp, level_ups, item_drop info.
         """
         if points <= 0:
-            return {"coins_earned": 0, "xp_earned": 0, "level_ups": [], "item_drop": None}
+            return {"xp_earned": 0, "level_ups": [], "item_drop": None}
 
         self.points += points
         self.total_points_earned += points
         self.total_entries_added += 1
-
-        # Coins based on strength
-        coins_earned = {0: 0, 1: 1, 2: 3, 3: 5}.get(strength_tier, 0)
-        self.coins += coins_earned
 
         # XP based on points
         xp_earned = points * 2
@@ -339,10 +325,9 @@ class PetState:
                     self._add_to_inventory(item_drop)
 
         self.save()
-        print(f"[Pet] +{points} pts, +{coins_earned} coins, +{xp_earned} XP ({reason})")
+        print(f"[Pet] +{points} pts, +{xp_earned} XP ({reason})")
 
         return {
-            "coins_earned": coins_earned,
             "xp_earned": xp_earned,
             "level_ups": level_ups,
             "item_drop": item_drop,
@@ -350,9 +335,7 @@ class PetState:
 
     def award_stale_update_bonus(self):
         """Bonus rewards for updating a stale password."""
-        bonus_coins = 5
         bonus_xp = 10
-        self.coins += bonus_coins
         level_ups = self.add_xp(bonus_xp)
         self.happiness = min(100.0, self.happiness + 10)
 
@@ -363,7 +346,6 @@ class PetState:
 
         self.save()
         return {
-            "bonus_coins": bonus_coins,
             "bonus_xp": bonus_xp,
             "level_ups": level_ups,
             "item_drop": item_drop,

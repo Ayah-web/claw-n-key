@@ -1,7 +1,7 @@
 """
 pet_panel.py
 Side panel showing pet stats, mood, interaction options,
-XP/level progress, coins, and inventory.
+XP/level progress, points, and inventory.
 """
 
 import flet as ft
@@ -88,9 +88,9 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
 
     xp_container = xp_bar()
 
-    # --- Points and Coins display ---
+    # --- Points display ---
 
-    def currency_display():
+    def points_display():
         return ft.Row(
             [
                 ft.Container(
@@ -108,27 +108,12 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
                     padding=ft.padding.symmetric(horizontal=10, vertical=4),
                     tooltip="Points (spend on feed/play)",
                 ),
-                ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Text("\U0001fa99", size=14),
-                            ft.Text(f"{pet.coins}", size=13,
-                                    weight=ft.FontWeight.W_600,
-                                    color=theme.c["text"]),
-                        ],
-                        spacing=4,
-                    ),
-                    bgcolor=theme.c["surface_2"],
-                    border_radius=8,
-                    padding=ft.padding.symmetric(horizontal=10, vertical=4),
-                    tooltip="Coins (earned from strong passwords)",
-                ),
             ],
             spacing=6,
             alignment=ft.MainAxisAlignment.CENTER,
         )
 
-    currency_row = currency_display()
+    points_row = points_display()
 
     # --- Mood display ---
 
@@ -437,7 +422,7 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
             mood_text,
             ft.Divider(color=theme.c["border"], height=1),
             xp_container,
-            currency_row,
+            points_row,
             ft.Divider(color=theme.c["border"], height=1),
             stats_column,
             ft.Divider(color=theme.c["border"], height=1),
@@ -479,8 +464,8 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         # Update XP bar
         xp_container.controls = xp_bar().controls
 
-        # Update currency
-        currency_row.controls = currency_display().controls
+        # Update points
+        points_row.controls = points_display().controls
 
         # Update mood
         mood_text.value = f"{mood_emoji.get(pet.mood, chr(0x1f431))} {pet.mood.title()}"

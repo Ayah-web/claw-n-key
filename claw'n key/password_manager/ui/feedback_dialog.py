@@ -13,19 +13,20 @@ from .widgets import show_snack, open_dialog, close_dialog
 def feedback_dialog(page, api, theme: ThemeManager):
     """Open the feedback/notes dialog."""
 
-    # --- Type selector ---
-    type_dropdown = ft.Dropdown(
+    # ✅ FIX: switched to DropdownM2 + dropdownm2.Option
+    type_dropdown = ft.DropdownM2(
         value="note",
         options=[
-            ft.dropdown.Option("note", "📝 Note"),
-            ft.dropdown.Option("feedback", "💬 Feedback"),
-            ft.dropdown.Option("bug", "🐛 Bug Report"),
+            ft.dropdownm2.Option(key="note", text="📝 Note"),
+            ft.dropdownm2.Option(key="feedback", text="💬 Feedback"),
+            ft.dropdownm2.Option(key="bug", text="🐛 Bug Report"),
         ],
         border_radius=8,
         filled=True,
         bgcolor=theme.c["surface_2"],
         border_color=theme.c["border"],
         focused_border_color=theme.c["primary"],
+        color=theme.c["text"],
         width=200,
     )
 
@@ -118,9 +119,9 @@ def feedback_dialog(page, api, theme: ThemeManager):
             padding=ft.padding.symmetric(horizontal=10, vertical=6),
         )
 
-    def _refresh_list():
+    def _refresh_list(fb_type="all"):
         """Reload and display feedback entries."""
-        entries = api.get_feedback()
+        entries = api.get_feedback() if fb_type == "all" else api.get_feedback(fb_type=fb_type)
         list_column.controls.clear()
         if not entries:
             list_column.controls.append(
@@ -151,45 +152,27 @@ def feedback_dialog(page, api, theme: ThemeManager):
         _refresh_list()
         page.update()
 
-    # --- Filter dropdown ---
-    filter_dropdown = ft.Dropdown(
+    # ✅ FIX: switched to DropdownM2 + dropdownm2.Option
+    filter_dropdown = ft.DropdownM2(
         value="all",
         options=[
-            ft.dropdown.Option("all", "All"),
-            ft.dropdown.Option("note", "📝 Notes"),
-            ft.dropdown.Option("feedback", "💬 Feedback"),
-            ft.dropdown.Option("bug", "🐛 Bugs"),
+            ft.dropdownm2.Option(key="all", text="All"),
+            ft.dropdownm2.Option(key="note", text="📝 Notes"),
+            ft.dropdownm2.Option(key="feedback", text="💬 Feedback"),
+            ft.dropdownm2.Option(key="bug", text="🐛 Bugs"),
         ],
         border_radius=8,
         filled=True,
         bgcolor=theme.c["surface_2"],
         border_color=theme.c["border"],
         focused_border_color=theme.c["primary"],
+        color=theme.c["text"],
         width=150,
     )
 
-    def on_filter_change(_):
-        val = filter_dropdown.value
-        if val == "all":
-            entries = api.get_feedback()
-        else:
-            entries = api.get_feedback(fb_type=val)
-        list_column.controls.clear()
-        if not entries:
-            list_column.controls.append(
-                ft.Container(
-                    content=ft.Text(
-                        "Nothing here.",
-                        size=12,
-                        color=theme.c["text_muted"],
-                        text_align=ft.TextAlign.CENTER,
-                    ),
-                    padding=20,
-                )
-            )
-        else:
-            for fb in entries[:30]:
-                list_column.controls.append(_build_feedback_card(fb))
+    # ✅ FIX: use e.control.value instead of filter_dropdown.value
+    def on_filter_change(e):
+        _refresh_list(e.control.value or "all")
         page.update()
 
     filter_dropdown.on_change = on_filter_change
@@ -209,7 +192,6 @@ def feedback_dialog(page, api, theme: ThemeManager):
             width=480,
             content=ft.Column(
                 [
-                    # --- Submit section ---
                     ft.Text("New Entry", size=14,
                             weight=ft.FontWeight.W_600,
                             color=theme.c["text"]),
@@ -235,7 +217,6 @@ def feedback_dialog(page, api, theme: ThemeManager):
                         ],
                     ),
                     ft.Divider(color=theme.c["border"], height=1),
-                    # --- Existing entries ---
                     ft.Row(
                         [
                             ft.Text("History", size=14,
@@ -261,7 +242,5 @@ def feedback_dialog(page, api, theme: ThemeManager):
         actions_alignment=ft.MainAxisAlignment.END,
     )
 
-    # Load existing entries
     _refresh_list()
-
     open_dialog(page, dlg)

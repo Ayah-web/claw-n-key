@@ -33,15 +33,17 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
             current_label = label
             break
 
-    timeout_dropdown = ft.Dropdown(
+    # ✅ FIX: switched to DropdownM2 to match vault.py
+    timeout_dropdown = ft.DropdownM2(
         value=current_label,
-        options=[ft.dropdown.Option(k) for k in timeout_options],
+        options=[ft.dropdownm2.Option(key=k, text=k) for k in timeout_options],
         label="Auto-lock after",
         border_radius=10,
         filled=True,
         bgcolor=theme.c["surface_2"],
         border_color=theme.c["border"],
         focused_border_color=theme.c["primary"],
+        color=theme.c["text"],
         width=250,
     )
 
@@ -114,6 +116,7 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
     # --- Stats summary ---
     stats_items = []
     if pet:
+        # ✅ FIX: removed coins line
         stats_items = [
             f"📝 Entries added: {pet.total_entries_added}",
             f"⭐ Total points earned: {pet.total_points_earned}",
@@ -121,7 +124,6 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
             f"🎾 Times played: {pet.times_played}",
             f"🐾 Times petted: {pet.times_petted}",
             f"🏆 Pet level: {pet.level}",
-            f"🪙 Coins: {pet.coins}",
         ]
 
     stats_container = ft.Container(
@@ -152,7 +154,8 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
             bgcolor=theme.c["surface"],
             title=ft.Text("Reset Pet?", color=theme.c["danger"]),
             content=ft.Text(
-                "This resets your pet's stats, level, coins and inventory. "
+                # ✅ FIX: removed "coins" from this string
+                "This resets your pet's stats, level and inventory. "
                 "Your passwords will NOT be affected.",
                 color=theme.c["text"],
             ),
