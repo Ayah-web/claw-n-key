@@ -24,6 +24,7 @@ from ui.splash import build_splash_view
 
 def main(page: ft.Page):
     page.title = "Claw'n Key"
+    page.window.icon = "logo.ico"
 
     if hasattr(page, "window") and page.window is not None:
         page.window.width = 1100
@@ -43,7 +44,10 @@ def main(page: ft.Page):
 
     api = Api()
     pet = PetState()
-    theme = ThemeManager(mode="dark")
+
+    # Load saved light theme variant before constructing ThemeManager
+    saved_variant = api.get_setting("light_theme_variant", "blue")
+    theme = ThemeManager(mode="dark", variant=saved_variant)
     theme.apply(page)
 
     # --- Session manager (auto-lock) ---
@@ -59,7 +63,6 @@ def main(page: ft.Page):
 
     # --- Global hotkey: Ctrl+Shift+K brings app to front ---
     def _bring_to_front():
-        """Bring the app window to front. Called from hotkey thread."""
         try:
             if hasattr(page, "window") and page.window is not None:
                 page.window.minimized = False
@@ -74,58 +77,44 @@ def main(page: ft.Page):
             print(f"[Hotkey] Could not bring to front: {e}")
 
     def _register_hotkey():
-        """Register the global hotkey in a background thread."""
         try:
             import keyboard
             keyboard.add_hotkey("ctrl+shift+k", _bring_to_front)
-            keyboard.wait()  # Blocks this thread, keeping hotkey alive
+            keyboard.wait()
         except ImportError:
             print("[Hotkey] 'keyboard' library not installed — hotkey disabled.")
         except Exception as e:
             print(f"[Hotkey] Registration failed: {e}")
 
-    # Start hotkey listener in a daemon thread so it dies with the app
     hotkey_thread = threading.Thread(target=_register_hotkey, daemon=True)
     hotkey_thread.start()
 
     def on_reset_account():
-        """
-        Wipe everything — vault.db + pet_save.json — and restart from splash.
-        Used by the 'Delete Account' option in settings.
-        """
         nonlocal api, pet
 
         session_mgr.stop()
         api.logout()
 
-        # Close the database connection BEFORE deleting!
         try:
             api.db.conn.close()
         except Exception as e:
             print(f"[Reset] Could not close DB connection: {e}")
 
-        # Delete vault database
         try:
             if os.path.exists(DB_FILE):
                 os.remove(DB_FILE)
                 print(f"[Reset] Deleted {DB_FILE}")
-            else:
-                print(f"[Reset] vault.db not found at {DB_FILE}")
         except Exception as e:
             print(f"[Reset] Could not delete vault.db: {e}")
 
-        # Delete pet save file
         from backend.pet import _PET_FILE
         try:
             if os.path.exists(_PET_FILE):
                 os.remove(_PET_FILE)
                 print(f"[Reset] Deleted {_PET_FILE}")
-            else:
-                print(f"[Reset] pet_save.json not found at {_PET_FILE}")
         except Exception as e:
             print(f"[Reset] Could not delete pet_save.json: {e}")
 
-        # Re-initialize everything fresh
         api = Api()
         pet = PetState()
 
@@ -153,6 +142,7 @@ def main(page: ft.Page):
                 on_logout=on_logout,
                 on_theme_toggle=on_theme_toggle,
                 on_reset_account=on_reset_account,
+                on_rerender=on_rerender,
                 pet=pet,
                 session_mgr=session_mgr,
             )
@@ -161,12 +151,10 @@ def main(page: ft.Page):
         page.update()
 
     def on_splash_complete():
-        """Splash → Intro."""
         state["view"] = "intro"
         render()
 
     def on_intro_complete():
-        """Intro → Auth (master password setup)."""
         state["view"] = "auth"
         render()
 
@@ -188,6 +176,10 @@ def main(page: ft.Page):
         theme.toggle()
         render()
 
+    def on_rerender():
+        """Re-render without toggling theme — used when only variant changes."""
+        render()
+
     # Decide starting view
     if pet.is_first_launch:
         state["view"] = "splash"
@@ -196,7 +188,8 @@ def main(page: ft.Page):
 
     render()
 
+
 if __name__ == "__main__":
     runner = getattr(ft, "run", None)
     if runner is not None:
-        runner(main)
+        runner(main, assets_dir="ui/assets")

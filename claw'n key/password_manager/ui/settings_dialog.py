@@ -12,7 +12,7 @@ from .widgets import show_snack, open_dialog, close_dialog
 
 def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
                     on_theme_toggle, cat_widget=None, refresh_pet=None,
-                    on_reset_account=None):
+                    on_reset_account=None, on_rerender=None):
     """Open the settings dialog."""
 
     # --- Auto-lock timeout ---
@@ -33,7 +33,6 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
             current_label = label
             break
 
-    # ✅ FIX: switched to DropdownM2 to match vault.py
     timeout_dropdown = ft.DropdownM2(
         value=current_label,
         options=[ft.dropdownm2.Option(key=k, text=k) for k in timeout_options],
@@ -53,6 +52,37 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
         value=(theme.mode == "dark"),
         active_color=theme.c["primary"],
     )
+
+    # --- Light theme variant picker (only visible in light mode) ---
+    variant_options = {
+        "blue":   "🔵 Blue (default)",
+        "pink":   "🌸 Pink",
+        "purple": "💜 Purple",
+    }
+
+    variant_dropdown = ft.DropdownM2(
+        value=theme.variant if theme.mode == "light" else "blue",
+        options=[
+            ft.dropdownm2.Option(key=k, text=v)
+            for k, v in variant_options.items()
+        ],
+        label="Light theme colour",
+        border_radius=10,
+        filled=True,
+        bgcolor=theme.c["surface_2"],
+        border_color=theme.c["border"],
+        focused_border_color=theme.c["primary"],
+        color=theme.c["text"],
+        width=250,
+        visible=(theme.mode == "light"),
+    )
+
+    def on_dark_switch_change(e):
+        """Show/hide the variant picker depending on the switch."""
+        variant_dropdown.visible = not e.control.value
+        page.update()
+
+    theme_switch.on_change = on_dark_switch_change
 
     # --- Pet name ---
     pet_name_field = ft.TextField(
@@ -116,7 +146,6 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
     # --- Stats summary ---
     stats_items = []
     if pet:
-        # ✅ FIX: removed coins line
         stats_items = [
             f"📝 Entries added: {pet.total_entries_added}",
             f"⭐ Total points earned: {pet.total_points_earned}",
@@ -154,7 +183,6 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
             bgcolor=theme.c["surface"],
             title=ft.Text("Reset Pet?", color=theme.c["danger"]),
             content=ft.Text(
-                # ✅ FIX: removed "coins" from this string
                 "This resets your pet's stats, level and inventory. "
                 "Your passwords will NOT be affected.",
                 color=theme.c["text"],
@@ -331,6 +359,7 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
     def on_save(_):
         changes = []
 
+        # Auto-lock timeout
         if session_mgr:
             new_timeout = timeout_options.get(timeout_dropdown.value, 300)
             if new_timeout == 0:
@@ -343,6 +372,7 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
                 changes.append(f"Auto-lock: {timeout_dropdown.value}")
             api.set_setting("auto_lock_timeout", str(new_timeout))
 
+        # Pet name
         if pet:
             new_name = (pet_name_field.value or "").strip()
             if new_name and new_name != pet.pet_name:
@@ -354,14 +384,37 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
                     refresh_pet()
                 changes.append(f"Pet renamed to {new_name}")
 
+        # Appearance
         is_dark = theme_switch.value
         current_is_dark = (theme.mode == "dark")
+        new_variant = variant_dropdown.value or "blue"
+
+        # Case 1: toggling dark <-> light
         if is_dark != current_is_dark:
+            if not is_dark:
+                # going to light — save chosen variant first
+                theme.variant = new_variant
+                api.set_setting("light_theme_variant", new_variant)
             close_dialog(page, dlg)
             on_theme_toggle()
             changes.append(f"Theme: {'Dark' if is_dark else 'Light'}")
             return
 
+        # Case 2: staying in light mode but variant changed
+        if not is_dark and new_variant != theme.variant:
+            theme.variant = new_variant
+            api.set_setting("light_theme_variant", new_variant)
+            changes.append(f"Light theme: {variant_options[new_variant]}")
+            if changes:
+                show_snack(page, "✅ " + " | ".join(changes))
+            else:
+                show_snack(page, "No changes made.")
+            close_dialog(page, dlg)
+            if on_rerender:
+                on_rerender()
+            return
+
+        # No theme changes
         if changes:
             show_snack(page, "✅ " + " | ".join(changes))
         else:
@@ -402,6 +455,7 @@ def settings_dialog(page, api, pet, theme: ThemeManager, session_mgr,
                     ft.Divider(color=theme.c["border"], height=1),
                     section_header(ft.Icons.PALETTE, "Appearance"),
                     theme_switch,
+                    variant_dropdown,
                     ft.Divider(color=theme.c["border"], height=1),
                     section_header(ft.Icons.PETS, "Pet"),
                     pet_name_field,

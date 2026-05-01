@@ -361,7 +361,9 @@ def _build_card(theme, icon, title, subtitle, controls, width=420):
         content=ft.Column(
             [
                 ft.Row(
-                    [ft.Icon(icon, size=36, color=theme.c["primary"])],
+                    [
+                        ft.Image(src="logo.png", width=80, height=40, fit=ft.BoxFit.CONTAIN),
+                    ],
                     alignment=ft.MainAxisAlignment.CENTER,
                 ),
                 ft.Text(

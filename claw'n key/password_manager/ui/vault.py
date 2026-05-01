@@ -19,7 +19,7 @@ from .status_bar import build_status_bar
 
 def build_vault_view(page: ft.Page, api, theme: ThemeManager,
                      on_logout, on_theme_toggle, on_reset_account=None,
-                     pet=None, session_mgr=None):
+                     on_rerender=None, pet=None, session_mgr=None):
 
     filter_state = {"query": "", "category": "All", "favorites_only": False}
 
@@ -93,7 +93,7 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
         refresh_status()
         page.update()
 
-    # ---------- Toolbar handlers — defined BEFORE controls ----------
+    # ---------- Toolbar handlers ----------
 
     def on_search(e):
         filter_state["query"] = e.control.value
@@ -130,7 +130,6 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
         expand=True,
     )
 
-    # ✅ DropdownM2 styled to match search_field using theme tokens
     category_filter = ft.DropdownM2(
         value="All",
         options=[ft.dropdownm2.Option(key="All", text="All")] +
@@ -285,6 +284,7 @@ def build_vault_view(page: ft.Page, api, theme: ThemeManager,
             page, api, pet, theme, session_mgr,
             on_theme_toggle, cat_widget, refresh_pet,
             on_reset_account=on_reset_account,
+            on_rerender=on_rerender,
         )
 
     def toggle_theme(_):
