@@ -1,55 +1,55 @@
 # Claw'n Key 🐾🔑
 
-Desktop password manager with a virtual cat companion. Python-only, runs with `python main.py`, opens in a native window — not a browser, not an `.exe`.
+A desktop password manager with a virtual cat that lives in your sidebar.
 
-## What's included
+## Features
 
-**Core security features**
-- Master password (PBKDF2-SHA256, 200k iterations, per-install salt)
-- Recovery key system — a one-time `RKEY-XXXX-XXXX-XXXX-XXXX-XXXX` key generated at vault creation; lets you reset your master password without losing your data
-- Password storage (Fernet / AES-128-CBC + HMAC-SHA256, key derived from master password)
-- Password generation (cryptographically secure via `secrets` module)
-- Password strength checking — 4 tiers: Bad / Not Good / Good / Great
-- Live strength feedback with improvement tips while typing
-- Session auto-lock — configurable idle timeout (1 min → 30 min → Never), resets on any keyboard activity
-- Global hotkey `Ctrl+Shift+K` brings the app to front from anywhere
+### Security
+- Master password hashed with PBKDF2-SHA256 (200k iterations, unique salt per install)
+- One-time recovery key (`RKEY-XXXX-XXXX-XXXX-XXXX-XXXX`) generated at setup so you can reset your master password without losing your vault
+- Passwords encrypted with Fernet (AES-128-CBC + HMAC-SHA256)
+- Password generator built on Python's `secrets` module
+- 4-tier strength checker: Bad / Not Good / Good / Great with live tips as you type
+- Auto-lock after configurable idle time (1 min up to 30 min or never)
+- `Ctrl+Shift+K` brings the window to front from anywhere
 
-**Vault features**
-- Add, edit, delete, view password entries
-- Categories: Personal / Work / Finance / Social / Streaming / Shopping / Other — colored stripes per card
-- Favorites — star any entry, filter to favorites only
-- Stale password detection — entries not updated in 30+ days get an ⏰ badge and a warning on open
-- Search across service name and username
-- Category filter dropdown
-- Copy password to clipboard with one click
-- Dark galaxy theme + light pastel theme, toggle in toolbar
+### Vault
+- Add / edit / delete / view entries
+- 7 categories with colored card stripes
+- Favorites with a filter toggle
+- Entries not touched in 30+ days get an ⏰ badge and a warning when opened
+- Search by service or username
+- One-click copy to clipboard
+- Dark and light themes with 3 light color variants: blue / pink / purple
 
-**Pet / gamification system**
-- Virtual cat companion (Whiskers by default, renameable) rendered with a pixel-art sprite engine (`backend/catode/`)
-- Cat animates in real time at 12 fps using `flet.canvas` — no PNG encoding
-- Mood system: Happy / Neutral / Sad / Miserable based on average of Hunger, Happiness, Energy stats
-- Time-based stat decay — pet gets sadder the longer you ignore it
-- Stale passwords apply a happiness penalty to the pet
-- Points earned per password added/updated (stronger = more points)
-- Points spent on Feed (Kibble / Treat / Fancy Feast) and Play (Yarn Ball / Laser Pointer / Catnip Mouse) actions
-- XP + level system — levels up automatically, with happiness bonus on level-up
-- Item drop system — every 5 "Great" passwords or on updating a stale password, rolls for a Common / Rare / Legendary item drop (outfits, toys, food)
-- Inventory dialog shows all collected items grouped by rarity
-- Pet panel in the vault sidebar: stat bars, XP bar, points display, mood, feed/play/pet buttons, inventory
-- Speech bubble above cat reacts to actions and idles with random chatter
-- Cat widget also appears on the splash screen (sleeping) and intro screen
+### The cat
+- Pixel-art sprite rendered at 12fps on a `flet.canvas` using a custom sprite engine called `catode` — no PNG encoding
+- Mood (Happy / Neutral / Sad / Miserable) driven by Hunger / Happiness / Energy stats that decay over real time
+- Stale passwords in your vault lower its happiness
+- Earn points by saving passwords. Stronger passwords earn more
+- Spend points to feed or play with it
+- XP and level system with item drops every 5 "Great" passwords or when you fix a stale one
+- Drops are Common / Rare / Legendary outfits, toys and food with a full inventory view
+- Speech bubble reacts to what you do and idles with random lines when left alone
+- Shows up sleeping on the splash screen and wakes up during the intro
 
-**First-run onboarding**
-- Splash screen with sleeping cat
-- Animated intro sequence with typewriter dialogue — cat introduces itself and asks to be named
-- Setup flow for master password + recovery key display
+### First launch
+- Sleeping cat on the splash screen
+- Typewriter intro where the cat wakes up and asks you to name it
+- Master password setup with recovery key display
 
-**Feedback & Notes**
-- In-app notes system — log bug reports, feedback, or personal notes
-- Filter by type (Note / Feedback / Bug Report)
-- Stored locally in `vault.db`
+### Notes
+- Simple in-app notes for logging bugs, ideas or anything else
+- Filterable by type: Note / Feedback / Bug Report
 
-**Status bar**
-- Always-visible bottom bar: AES-256 indicator, stale password count, pet level, points, session timer
-- Session timer colour-codes to orange (<2 min) and red (<1 min) before auto-lock
+### Status bar
+- Always visible at the bottom: encryption status, stale count, pet level, points and session timer
+- Timer goes orange under 2 minutes and red under 1 minute
 
+---
+
+## Setup
+
+```bash
+pip install -r requirements.txt
+python main.py
