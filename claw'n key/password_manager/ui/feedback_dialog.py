@@ -13,7 +13,6 @@ from .widgets import show_snack, open_dialog, close_dialog
 def feedback_dialog(page, api, theme: ThemeManager):
     """Open the feedback/notes dialog."""
 
-    # ✅ FIX: switched to DropdownM2 + dropdownm2.Option
     type_dropdown = ft.DropdownM2(
         value="note",
         options=[
@@ -30,7 +29,6 @@ def feedback_dialog(page, api, theme: ThemeManager):
         width=200,
     )
 
-    # --- Input fields ---
     title_field = ft.TextField(
         label="Title (optional)",
         hint_text="Brief title…",
@@ -54,11 +52,10 @@ def feedback_dialog(page, api, theme: ThemeManager):
         focused_border_color=theme.c["primary"],
     )
 
-    # --- List of existing feedback ---
     list_column = ft.Column(
         spacing=6,
         scroll=ft.ScrollMode.AUTO,
-        height=200,
+        expand=True,
     )
 
     type_icons = {
@@ -68,7 +65,6 @@ def feedback_dialog(page, api, theme: ThemeManager):
     }
 
     def _build_feedback_card(fb):
-        """Build a single feedback card."""
         created = datetime.fromtimestamp(fb["created_at"]).strftime("%b %d, %Y %H:%M")
         icon = type_icons.get(fb["type"], "📝")
         title_str = fb["title"] if fb["title"] else fb["type"].capitalize()
@@ -120,23 +116,42 @@ def feedback_dialog(page, api, theme: ThemeManager):
         )
 
     def _refresh_list(fb_type="all"):
-        """Reload and display feedback entries."""
         entries = api.get_feedback() if fb_type == "all" else api.get_feedback(fb_type=fb_type)
         list_column.controls.clear()
         if not entries:
             list_column.controls.append(
-                ft.Text(
-                    "No entries yet.",
-                    size=12,
-                    color=theme.c["text_muted"],
-                    italic=True,
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Text("📭", size=28, text_align=ft.TextAlign.CENTER),
+                            ft.Text(
+                                "No entries yet.",
+                                size=12,
+                                color=theme.c["text_muted"],
+                                italic=True,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=6,
+                    ),
+                    bgcolor=theme.c["surface_2"],
+                    border_radius=8,
+                    padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                    alignment=ft.Alignment(0, 0),
+                    expand=True,
+                    height=168,
                 )
             )
         else:
-            for fb in entries[:20]:
+            for i, fb in enumerate(entries[:20]):
                 list_column.controls.append(_build_feedback_card(fb))
+                if i < len(entries[:20]) - 1:
+                    list_column.controls.append(
+                        ft.Divider(color=theme.c["border"], height=1)
+                    )
 
-    # --- Submit handler ---
     def on_submit(_):
         content = (content_field.value or "").strip()
         if not content:
@@ -144,7 +159,6 @@ def feedback_dialog(page, api, theme: ThemeManager):
             return
         title = (title_field.value or "").strip()
         fb_type = type_dropdown.value or "note"
-
         api.add_feedback(content, title, fb_type)
         content_field.value = ""
         title_field.value = ""
@@ -152,7 +166,6 @@ def feedback_dialog(page, api, theme: ThemeManager):
         _refresh_list()
         page.update()
 
-    # ✅ FIX: switched to DropdownM2 + dropdownm2.Option
     filter_dropdown = ft.DropdownM2(
         value="all",
         options=[
@@ -170,14 +183,20 @@ def feedback_dialog(page, api, theme: ThemeManager):
         width=150,
     )
 
-    # ✅ FIX: use e.control.value instead of filter_dropdown.value
     def on_filter_change(e):
         _refresh_list(e.control.value or "all")
         page.update()
 
     filter_dropdown.on_change = on_filter_change
 
-    # --- Layout ---
+    history_section = ft.Container(
+        content=list_column,
+        height=180,
+        bgcolor=theme.c["surface_2"],
+        border_radius=8,
+        padding=ft.padding.symmetric(horizontal=4, vertical=4),
+    )
+
     dlg = ft.AlertDialog(
         modal=True,
         bgcolor=theme.c["surface"],
@@ -190,11 +209,15 @@ def feedback_dialog(page, api, theme: ThemeManager):
         ),
         content=ft.Container(
             width=480,
+            height=500,
             content=ft.Column(
                 [
-                    ft.Text("New Entry", size=14,
-                            weight=ft.FontWeight.W_600,
-                            color=theme.c["text"]),
+                    ft.Text(
+                        "New Entry",
+                        size=14,
+                        weight=ft.FontWeight.W_600,
+                        color=theme.c["text"],
+                    ),
                     ft.Row(
                         [type_dropdown],
                         spacing=8,
@@ -219,18 +242,22 @@ def feedback_dialog(page, api, theme: ThemeManager):
                     ft.Divider(color=theme.c["border"], height=1),
                     ft.Row(
                         [
-                            ft.Text("History", size=14,
-                                    weight=ft.FontWeight.W_600,
-                                    color=theme.c["text"]),
+                            ft.Text(
+                                "History",
+                                size=14,
+                                weight=ft.FontWeight.W_600,
+                                color=theme.c["text"],
+                            ),
                             ft.Container(expand=True),
                             filter_dropdown,
                         ],
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    list_column,
+                    history_section,
                 ],
                 spacing=10,
                 tight=True,
+                scroll=ft.ScrollMode.AUTO,
             ),
         ),
         actions=[
