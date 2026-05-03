@@ -4,10 +4,12 @@ Modal dialogs: add/edit entry, view entry, standalone generator.
 
 Each dialog is built on demand via a factory, so theme changes apply
 immediately to the next dialog that opens.
-Now includes: favorites toggle, stale badges, pet reward popups.
+Now includes: favorites toggle, stale badges, pet reward popups,
+last updated date, and password tips info button.
 """
 
 import flet as ft
+from datetime import datetime
 from .theme import ThemeManager
 from .widgets import (
     strength_badge, stale_badge, favorite_star,
@@ -26,6 +28,17 @@ def _styled_textfield(label, theme: ThemeManager, **kwargs):
         focused_border_color=theme.c["primary"],
         **kwargs,
     )
+
+
+def _format_date(ts):
+    """Format a SQLite timestamp string to a readable date."""
+    if not ts:
+        return "—"
+    try:
+        dt = datetime.strptime(str(ts), "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%b %d, %Y")
+    except Exception:
+        return str(ts)
 
 
 def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
@@ -67,11 +80,10 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
         focused_border_color=theme.c["primary"],
     )
 
-    # Favorite checkbox (only for edit)
     fav_checkbox = None
     if is_edit:
         fav_checkbox = ft.Checkbox(
-            label="\u2b50 Favorite",
+            label="⭐ Favorite",
             value=bool(existing.get("is_favorite", 0)),
             check_color=theme.c["primary"],
         )
@@ -83,19 +95,17 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
         if password.value:
             label = api.check_strength(password.value)
             strength_row.controls.append(strength_badge(label, theme))
-            # Show point preview
             from backend.password_tools import strength_points, strength_tips
             pts = strength_points(label)
             if pts > 0:
                 strength_row.controls.append(
                     ft.Text(
-                        f"+{pts}\u2605",
+                        f"+{pts}★",
                         size=12,
                         color="#e5c14a",
                         weight=ft.FontWeight.W_600,
                     )
                 )
-            # Show tips for weak passwords
             tips = strength_tips(password.value)
             if tips and label in ("Bad", "Not Good"):
                 strength_row.controls.append(
@@ -125,7 +135,6 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
         style=ft.ButtonStyle(color=theme.c["primary"]),
     )
 
-    # Stale warning for edits
     stale_warning = None
     if is_edit and existing.get("is_stale"):
         stale_warning = ft.Container(
@@ -145,6 +154,56 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
             border_radius=8,
             padding=ft.padding.symmetric(horizontal=12, vertical=8),
         )
+
+    # --- Info button popup ---
+    def show_info(_):
+        info_dlg = ft.AlertDialog(
+            modal=True,
+            bgcolor=theme.c["surface"],
+            title=ft.Row(
+                [
+                    ft.Icon(ft.Icons.INFO_OUTLINE, color=theme.c["primary"]),
+                    ft.Text("Password Tips", color=theme.c["text"]),
+                ],
+                spacing=8,
+            ),
+            content=ft.Container(
+                width=340,
+                content=ft.Column(
+                    [
+                        ft.Text(
+                            "What makes a strong password?",
+                            size=13,
+                            weight=ft.FontWeight.W_600,
+                            color=theme.c["text"],
+                        ),
+                        ft.Text("• At least 12 characters long", size=12, color=theme.c["text_muted"]),
+                        ft.Text("• Mix of uppercase and lowercase letters", size=12, color=theme.c["text_muted"]),
+                        ft.Text("• At least one number", size=12, color=theme.c["text_muted"]),
+                        ft.Text("• At least one special character (!@#$...)", size=12, color=theme.c["text_muted"]),
+                        ft.Text("• Avoid common words, names or patterns", size=12, color=theme.c["text_muted"]),
+                        ft.Divider(color=theme.c["border"], height=1),
+                        ft.Text(
+                            "💡 Try to change your passwords every 30 to 90 days. "
+                            "Your cat will be happier for it.",
+                            size=12,
+                            color=theme.c["text_muted"],
+                            italic=True,
+                        ),
+                    ],
+                    spacing=8,
+                    tight=True,
+                ),
+            ),
+            actions=[
+                ft.TextButton(
+                    "Got it",
+                    on_click=lambda _: close_dialog(page, info_dlg),
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        open_dialog(page, info_dlg)
 
     def save(_):
         if not service.value or not password.value:
@@ -175,7 +234,6 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
             show_snack(page, result["error"], error=True)
             return
 
-        # --- Award pet rewards ---
         if pet and not is_edit:
             pts = result.get("points", 0)
             strength = result.get("strength", "")
@@ -183,7 +241,7 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
             reward = pet.award_points(pts, strength_tier=tier,
                                        reason=f"Added {service.value.strip()} ({strength})")
             if pts > 0:
-                show_snack(page, f"\U0001f43e +{pts} points! ({strength} password)")
+                show_snack(page, f"🐾 +{pts} points! ({strength} password)")
                 if cat_widget:
                     cat_widget.trigger_happy()
                     if reward.get("item_drop"):
@@ -194,10 +252,9 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
                         cat_widget.say(f"LEVEL UP! I'm level {new_lvl}!", 4.0)
                     else:
                         cat_widget.trigger_password_added()
-                # Show reward snack
                 reward_snack(page, reward, pet.pet_name)
             else:
-                show_snack(page, "Entry saved. (Weak password = no rewards \U0001f63f)")
+                show_snack(page, "Entry saved. (Weak password = no rewards 😿)")
                 if cat_widget:
                     cat_widget.say("That password is weak...", 3.0)
 
@@ -209,15 +266,13 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
             pts = result.get("points", 0)
             tier = result.get("strength_tier", 0)
 
-            # Award update points
             reward = pet.award_points(max(1, pts), strength_tier=tier,
                                        reason=f"Updated {service.value.strip()}")
 
-            # Stale update bonus
             stale_reward = None
             if was_stale:
                 stale_reward = pet.award_stale_update_bonus()
-                show_snack(page, "\U0001f389 Stale password updated! Bonus rewards!")
+                show_snack(page, "🎉 Stale password updated! Bonus rewards!")
                 if cat_widget:
                     cat_widget.trigger_happy()
                     cat_widget.say("Thank you for updating! *purrs*", 3.0)
@@ -230,8 +285,6 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
             if refresh_pet:
                 refresh_pet()
 
-        # --- End pet rewards ---
-
         close_dialog(page, dlg)
         if not pet:
             show_snack(page, "Entry saved.")
@@ -240,7 +293,6 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
     def cancel(_):
         close_dialog(page, dlg)
 
-    # Build content column
     content_controls = [service, username, password, generate_btn, strength_row, category]
     if stale_warning:
         content_controls.insert(0, stale_warning)
@@ -249,8 +301,24 @@ def entry_form_dialog(page, api, theme: ThemeManager, on_saved,
 
     dlg = ft.AlertDialog(
         modal=True,
-        title=ft.Text("Edit Entry" if is_edit else "Add Entry"),
         bgcolor=theme.c["surface"],
+        title=ft.Row(
+            [
+                ft.Text(
+                    "Edit Entry" if is_edit else "Add Entry",
+                    expand=True,
+                    color=theme.c["text"],
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.INFO_OUTLINE,
+                    icon_color=theme.c["text_muted"],
+                    icon_size=18,
+                    tooltip="Password tips",
+                    on_click=show_info,
+                ),
+            ],
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
         content=ft.Container(
             width=400,
             content=ft.Column(
@@ -289,7 +357,7 @@ def view_entry_dialog(page, api, theme: ThemeManager, entry_id, on_changed,
 
     revealed = {"value": False}
     pwd_display = ft.Text(
-        "\u2022" * 12,
+        "•" * 12,
         font_family="Consolas",
         size=15,
         selectable=True,
@@ -303,7 +371,7 @@ def view_entry_dialog(page, api, theme: ThemeManager, entry_id, on_changed,
 
     def toggle_reveal(_):
         revealed["value"] = not revealed["value"]
-        pwd_display.value = entry["password"] if revealed["value"] else "\u2022" * 12
+        pwd_display.value = entry["password"] if revealed["value"] else "•" * 12
         reveal_btn.icon = (
             ft.Icons.VISIBILITY_OFF_OUTLINED if revealed["value"]
             else ft.Icons.VISIBILITY_OUTLINED
@@ -339,13 +407,12 @@ def view_entry_dialog(page, api, theme: ThemeManager, entry_id, on_changed,
     def field_row(label, value):
         return ft.Row(
             [
-                ft.Text(label, width=80, size=13, color=theme.c["text_muted"]),
+                ft.Text(label, width=90, size=13, color=theme.c["text_muted"]),
                 ft.Text(value, size=14, color=theme.c["text"], selectable=True,
                         expand=True),
             ],
         )
 
-    # Favorite button
     fav_btn = ft.IconButton(
         icon=ft.Icons.STAR if entry.get("is_favorite") else ft.Icons.STAR_BORDER,
         icon_color="#e5c14a" if entry.get("is_favorite") else theme.c["text_muted"],
@@ -354,31 +421,30 @@ def view_entry_dialog(page, api, theme: ThemeManager, entry_id, on_changed,
         on_click=do_toggle_fav,
     )
 
-    # Build content
     content_controls = [
-        field_row("Username", entry["username"] or "\u2014"),
+        field_row("Username", entry["username"] or "—"),
         field_row("Category", entry["category"]),
         ft.Row(
             [
-                ft.Text("Password", width=80, size=13,
+                ft.Text("Password", width=90, size=13,
                         color=theme.c["text_muted"]),
                 pwd_display,
                 reveal_btn,
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         ),
+        field_row("Last updated", _format_date(entry.get("updated_at"))),
         ft.Container(height=4),
         ft.Row([
             strength_badge(entry["strength"], theme),
             ft.Text(
-                f"+{entry.get('points', 0)}\u2605",
+                f"+{entry.get('points', 0)}★",
                 size=12, color="#e5c14a",
                 weight=ft.FontWeight.W_600,
             ),
         ], spacing=8),
     ]
 
-    # Stale warning
     if entry.get("is_stale"):
         content_controls.insert(0, ft.Container(
             content=ft.Row(
@@ -505,7 +571,7 @@ def generator_dialog(page, api, theme: ThemeManager):
         strength_row.controls = [
             strength_badge(label, theme),
             ft.Text(
-                f"+{pts}\u2605",
+                f"+{pts}★",
                 size=12, color="#e5c14a",
                 weight=ft.FontWeight.W_600,
             ),

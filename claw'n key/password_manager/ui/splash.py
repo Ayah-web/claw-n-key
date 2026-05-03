@@ -156,13 +156,9 @@ def build_splash_view(page: ft.Page, theme: ThemeManager,
                 ),
                 # Main content centered
                 ft.Container(
-                    content=ft.Column(
-                        [card],
-                        alignment=ft.MainAxisAlignment.CENTER,
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
+                    content=card,
                     expand=True,
-                    alignment=ft.Alignment(0, 0),
+                    alignment=ft.Alignment(0, -0.3),
                 ),
             ],
             spacing=0,
