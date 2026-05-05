@@ -53,23 +53,17 @@ def xp_for_level(level: int) -> int:
 
 ITEM_DROPS = {
     "common": [
-        ("outfit", "Red Collar"),
-        ("outfit", "Blue Bandana"),
-        ("outfit", "Green Bow"),
         ("toy", "Yarn Ball"),
         ("toy", "Feather Wand"),
         ("food", "Tuna Treat"),
         ("food", "Milk Bowl"),
     ],
     "rare": [
-        ("outfit", "Starry Cape"),
-        ("outfit", "Crown"),
-        ("outfit", "Wizard Hat"),
         ("toy", "Laser Pointer"),
         ("toy", "Catnip Mouse"),
     ],
     "legendary": [
-        ("outfit", "Galaxy Cloak"),
+        ("food", "bacon"),
         ("outfit", "Angel Wings"),
         ("outfit", "Top Hat & Monocle"),
     ],
@@ -307,7 +301,7 @@ class PetState:
         self.total_entries_added += 1
 
         # XP based on points
-        xp_earned = points * 2
+        xp_earned = points * 5
         level_ups = self.add_xp(xp_earned)
 
         # Happiness based on strength
@@ -407,6 +401,53 @@ class PetState:
         self.times_petted += 1
         self.save()
         return True, f"You petted {self.pet_name}!"
+    
+    def use_inventory_item(self, item_index: int):
+        """
+        Use a food or toy item from inventory.
+        Applies its effect and removes it from inventory.
+        Returns (success, message).
+        """
+        if item_index < 0 or item_index >= len(self.inventory):
+            return False, "Item not found."
+
+        item = self.inventory[item_index]
+        item_type = item.get("type")
+        item_name = item.get("name")
+
+        if item_type == "food":
+            # Map inventory food names to feed effects
+            food_effects = {
+                "Tuna Treat":  {"hunger": 8,  "happiness": 15, "energy": 5},
+                "Milk Bowl":   {"hunger": 12, "happiness": 10, "energy": 8},
+            }
+            effect = food_effects.get(item_name, {"hunger": 10, "happiness": 8, "energy": 5})
+            self.hunger = min(100.0, self.hunger + effect["hunger"])
+            self.happiness = min(100.0, self.happiness + effect["happiness"])
+            self.energy = min(100.0, self.energy + effect["energy"])
+            self.inventory.pop(item_index)
+            self.save()
+            return True, f"{self.pet_name} enjoyed the {item_name}!"
+
+        elif item_type == "toy":
+            if self.energy <= 5:
+                return False, f"{self.pet_name} is too tired to play!"
+            toy_effects = {
+                "Yarn Ball":     {"happiness": 15, "energy": -5,  "hunger": -3},
+                "Feather Wand":  {"happiness": 20, "energy": -8,  "hunger": -3},
+                "Laser Pointer": {"happiness": 25, "energy": -10, "hunger": -5},
+                "Catnip Mouse":  {"happiness": 35, "energy": 10,  "hunger": -2},
+            }
+            effect = toy_effects.get(item_name, {"happiness": 15, "energy": -5, "hunger": -3})
+            self.happiness = max(0.0, min(100.0, self.happiness + effect["happiness"]))
+            self.energy = max(0.0, min(100.0, self.energy + effect["energy"]))
+            self.hunger = max(0.0, min(100.0, self.hunger + effect["hunger"]))
+            self.inventory.pop(item_index)
+            self.save()
+            return True, f"{self.pet_name} played with the {item_name}!"
+
+        else:
+            return False, "This item can't be used."
 
     # --- XP progress ---
 

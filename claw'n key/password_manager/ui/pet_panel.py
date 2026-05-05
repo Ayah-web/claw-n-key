@@ -67,7 +67,7 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
             [
                 ft.Row(
                     [
-                        ft.Text(f"\U0001f3c6 Level {pet.level}", size=13,
+                        ft.Text(f"🏆 Level {pet.level}", size=13,
                                 weight=ft.FontWeight.BOLD,
                                 color=theme.c["primary"]),
                         ft.Text(f"{current_xp}/{needed_xp} XP", size=11,
@@ -118,14 +118,14 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
     # --- Mood display ---
 
     mood_emoji = {
-        "happy": "\U0001f63a",
-        "neutral": "\U0001f431",
-        "sad": "\U0001f63f",
-        "miserable": "\U0001f640",
+        "happy":     "😺",
+        "neutral":   "🐱",
+        "sad":       "😿",
+        "miserable": "🙀",
     }
 
     mood_text = ft.Text(
-        f"{mood_emoji.get(pet.mood, chr(0x1f431))} {pet.mood.title()}",
+        f"{mood_emoji.get(pet.mood, '🐱')} {pet.mood.title()}",
         size=13,
         color=theme.c["text_muted"],
         text_align=ft.TextAlign.CENTER,
@@ -143,9 +143,7 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
 
     name_row = ft.Container(
         content=ft.Row(
-            [
-                name_text,
-            ],
+            [name_text],
             spacing=4,
             alignment=ft.MainAxisAlignment.CENTER,
         ),
@@ -156,10 +154,10 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
     def on_pet_click(_):
         ok, msg = pet.pet_cat()
         if ok:
-            show_snack(page, f"\U0001f43e {msg}")
+            show_snack(page, f"🐾 {msg}")
             cat_widget.trigger_pet()
         else:
-            show_snack(page, f"\u23f3 {msg}", error=False)
+            show_snack(page, f"⏳ {msg}", error=False)
         refresh_panel()
 
     pet_button = ft.Container(
@@ -190,10 +188,10 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         def on_feed(_):
             ok, msg = pet.feed(food_name)
             if ok:
-                show_snack(page, f"\U0001f431 {msg}")
+                show_snack(page, f"🐱 {msg}")
                 cat_widget.trigger_happy()
             else:
-                show_snack(page, f"\u274c {msg}", error=True)
+                show_snack(page, f"❌ {msg}", error=True)
             refresh_panel()
 
         return ft.Container(
@@ -201,8 +199,9 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
                 [
                     ft.Text(food_name, size=11, weight=ft.FontWeight.W_600,
                             color=theme.c["text"], text_align=ft.TextAlign.CENTER),
-                    ft.Text(f"{cost}\u2605", size=10,
-                            color=theme.c["text_muted"], text_align=ft.TextAlign.CENTER),
+                    ft.Text(f"{cost}★", size=10,
+                            color=theme.c["text_muted"],
+                            text_align=ft.TextAlign.CENTER),
                 ],
                 spacing=2,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -231,10 +230,10 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         def on_play(_):
             ok, msg = pet.play(toy_name)
             if ok:
-                show_snack(page, f"\U0001f3be {msg}")
+                show_snack(page, f"🎾 {msg}")
                 cat_widget.trigger_play()
             else:
-                show_snack(page, f"\u274c {msg}", error=True)
+                show_snack(page, f"❌ {msg}", error=True)
             refresh_panel()
 
         return ft.Container(
@@ -242,8 +241,9 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
                 [
                     ft.Text(toy_name, size=11, weight=ft.FontWeight.W_600,
                             color=theme.c["text"], text_align=ft.TextAlign.CENTER),
-                    ft.Text(f"{cost}\u2605", size=10,
-                            color=theme.c["text_muted"], text_align=ft.TextAlign.CENTER),
+                    ft.Text(f"{cost}★", size=10,
+                            color=theme.c["text_muted"],
+                            text_align=ft.TextAlign.CENTER),
                 ],
                 spacing=2,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -271,31 +271,81 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
     def _show_inventory_dialog():
         from .widgets import open_dialog, close_dialog
 
-        grouped = pet.get_inventory_by_rarity()
-
-        def _item_row(item):
-            emoji = RARITY_EMOJI.get(item["rarity"], "\u2b50")
+        def _item_row(item, index):
+            emoji = RARITY_EMOJI.get(item["rarity"], "⭐")
             rarity_colors = {
-                "common": theme.c["text_muted"],
-                "rare": "#4ea5dd",
+                "common":    theme.c["text_muted"],
+                "rare":      "#4ea5dd",
                 "legendary": "#e5c14a",
             }
+            is_usable = item["type"] in ("food", "toy")
+            use_icon = "🍖" if item["type"] == "food" else "🎾"
+
+            def on_use(_, idx=index):
+                ok, msg = pet.use_inventory_item(idx)
+                if ok:
+                    show_snack(page, f"🐾 {msg}")
+                    if item["type"] == "food":
+                        cat_widget.trigger_happy()
+                    elif item["type"] == "toy":
+                        cat_widget.trigger_play()
+                    refresh_panel()
+                    _rebuild_items()
+                else:
+                    show_snack(page, f"❌ {msg}", error=True)
+
+            row_controls = [
+                ft.Text(emoji, size=14),
+                ft.Text(
+                    item["name"],
+                    size=12,
+                    color=theme.c["text"],
+                    weight=ft.FontWeight.W_600,
+                    expand=True,
+                ),
+                ft.Text(
+                    f"({item['type']})",
+                    size=10,
+                    color=theme.c["text_muted"],
+                ),
+                ft.Text(
+                    item["rarity"].title(),
+                    size=10,
+                    color=rarity_colors.get(item["rarity"], theme.c["text_muted"]),
+                    weight=ft.FontWeight.W_600,
+                ),
+            ]
+
+            if is_usable:
+                row_controls.append(
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Text(use_icon, size=12),
+                                ft.Text(
+                                    "Use",
+                                    size=11,
+                                    weight=ft.FontWeight.W_600,
+                                    color=theme.c["primary"],
+                                ),
+                            ],
+                            spacing=4,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                        ),
+                        bgcolor=theme.c["surface"],
+                        border=ft.border.all(1, theme.c["primary"]),
+                        border_radius=6,
+                        padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                        on_click=on_use,
+                        ink=True,
+                    )
+                )
+
             return ft.Container(
                 content=ft.Row(
-                    [
-                        ft.Text(emoji, size=14),
-                        ft.Text(item["name"], size=12,
-                                color=theme.c["text"],
-                                weight=ft.FontWeight.W_600),
-                        ft.Text(f"({item['type']})", size=10,
-                                color=theme.c["text_muted"]),
-                        ft.Container(expand=True),
-                        ft.Text(item["rarity"].title(), size=10,
-                                color=rarity_colors.get(item["rarity"],
-                                                         theme.c["text_muted"]),
-                                weight=ft.FontWeight.W_600),
-                    ],
+                    row_controls,
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=8,
                 ),
                 bgcolor=theme.c["surface_2"],
                 border=ft.border.all(1, theme.c["border"]),
@@ -303,54 +353,84 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
                 padding=ft.padding.symmetric(horizontal=10, vertical=6),
             )
 
-        items_list = ft.Column(spacing=4, scroll=ft.ScrollMode.AUTO, height=300)
+        items_list = ft.Column(
+            spacing=4,
+            scroll=ft.ScrollMode.AUTO,
+            height=300,
+        )
 
-        if not pet.inventory:
-            items_list.controls.append(
-                ft.Container(
-                    content=ft.Column(
-                        [
-                            ft.Text("\U0001f4e6", size=32,
-                                    text_align=ft.TextAlign.CENTER),
-                            ft.Text("No items yet!", size=14,
+        def _rebuild_items():
+            items_list.controls.clear()
+
+            if not pet.inventory:
+                items_list.controls.append(
+                    ft.Container(
+                        content=ft.Column(
+                            [
+                                ft.Text("📦", size=32,
+                                        text_align=ft.TextAlign.CENTER),
+                                ft.Text(
+                                    "No items yet!",
+                                    size=14,
                                     color=theme.c["text_muted"],
-                                    text_align=ft.TextAlign.CENTER),
-                            ft.Text("Add 'Great' passwords to earn item drops!",
-                                    size=12, color=theme.c["text_muted"],
-                                    text_align=ft.TextAlign.CENTER),
-                        ],
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=6,
-                    ),
-                    padding=30,
-                )
-            )
-        else:
-            # Show by rarity: legendary first
-            for rarity in ["legendary", "rare", "common"]:
-                items = grouped.get(rarity, [])
-                if items:
-                    items_list.controls.append(
-                        ft.Text(
-                            f"{RARITY_EMOJI.get(rarity, '')} {rarity.title()} ({len(items)})",
-                            size=12, weight=ft.FontWeight.W_600,
-                            color=theme.c["text_muted"],
-                        )
+                                    text_align=ft.TextAlign.CENTER,
+                                ),
+                                ft.Text(
+                                    "Add 'Great' passwords to earn item drops!",
+                                    size=12,
+                                    color=theme.c["text_muted"],
+                                    text_align=ft.TextAlign.CENTER,
+                                ),
+                            ],
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            spacing=6,
+                        ),
+                        alignment=ft.Alignment(0, 0),
+                        expand=True,
+                        height=290,
                     )
-                    for item in items:
-                        items_list.controls.append(_item_row(item))
+                )
+            else:
+                flat_index = 0
+                index_map = {}
+                for inv_item in pet.inventory:
+                    rarity = inv_item.get("rarity", "common")
+                    index_map.setdefault(rarity, []).append((flat_index, inv_item))
+                    flat_index += 1
 
-        # Summary
+                for rarity in ["legendary", "rare", "common"]:
+                    entries = index_map.get(rarity, [])
+                    if entries:
+                        items_list.controls.append(
+                            ft.Text(
+                                f"{RARITY_EMOJI.get(rarity, '')} {rarity.title()} ({len(entries)})",
+                                size=12,
+                                weight=ft.FontWeight.W_600,
+                                color=theme.c["text_muted"],
+                            )
+                        )
+                        for real_index, inv_item in entries:
+                            items_list.controls.append(
+                                _item_row(inv_item, real_index)
+                            )
+
+            page.update()
+
+        _rebuild_items()
+
+        grouped = pet.get_inventory_by_rarity()
         summary = ft.Row(
             [
-                ft.Text(f"\U0001f4e6 {pet.inventory_count} items", size=12,
+                ft.Text(f"📦 {pet.inventory_count} items", size=12,
                         color=theme.c["text_muted"]),
                 ft.Container(expand=True),
                 ft.Text(
-                    f"\u2b50{len(grouped.get('common', []))} "
-                    f"\U0001f48e{len(grouped.get('rare', []))} "
-                    f"\U0001f451{len(grouped.get('legendary', []))}",
-                    size=11, color=theme.c["text_muted"],
+                    f"⭐{len(grouped.get('common', []))} "
+                    f"💎{len(grouped.get('rare', []))} "
+                    f"👑{len(grouped.get('legendary', []))}",
+                    size=11,
+                    color=theme.c["text_muted"],
                 ),
             ],
         )
@@ -360,15 +440,20 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
             bgcolor=theme.c["surface"],
             title=ft.Row(
                 [
-                    ft.Text("\U0001f392", size=20),
-                    ft.Text(f"{pet.pet_name}'s Inventory", color=theme.c["text"]),
+                    ft.Text("🎒", size=20),
+                    ft.Text(f"{pet.pet_name}'s Inventory",
+                            color=theme.c["text"]),
                 ],
                 spacing=8,
             ),
             content=ft.Container(
                 width=400,
                 content=ft.Column(
-                    [summary, ft.Divider(color=theme.c["border"], height=1), items_list],
+                    [
+                        summary,
+                        ft.Divider(color=theme.c["border"], height=1),
+                        items_list,
+                    ],
                     spacing=8,
                     tight=True,
                 ),
@@ -385,7 +470,7 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
     inventory_btn = ft.Container(
         content=ft.Row(
             [
-                ft.Text("\U0001f392", size=14),
+                ft.Text("🎒", size=14),
                 ft.Text(f"Inventory ({pet.inventory_count})", size=12,
                         color=theme.c["text"],
                         weight=ft.FontWeight.W_600),
@@ -454,35 +539,23 @@ def build_pet_panel(page, pet: PetState, cat_widget, theme: ThemeManager):
         pet.apply_decay()
         cat_widget.set_mood_poses(pet.mood_poses)
 
-        # Update stat bars
         stats_column.controls = [
             stat_bar("Hunger", pet.hunger, "#68c58f", ft.Icons.RESTAURANT),
             stat_bar("Happiness", pet.happiness, "#f07ba6", ft.Icons.FAVORITE),
             stat_bar("Energy", pet.energy, "#4ea5dd", ft.Icons.BOLT),
         ]
 
-        # Update XP bar
         xp_container.controls = xp_bar().controls
-
-        # Update points
         points_row.controls = points_display().controls
-
-        # Update mood
-        mood_text.value = f"{mood_emoji.get(pet.mood, chr(0x1f431))} {pet.mood.title()}"
-
-        # Update name
+        mood_text.value = f"{mood_emoji.get(pet.mood, '🐱')} {pet.mood.title()}"
         name_text.value = pet.pet_name
 
-        # Update feed buttons
         feed_row.controls = [make_feed_button(name) for name in FEED_OPTIONS]
-
-        # Update play buttons
         play_row.controls = [make_play_button(name) for name in PLAY_OPTIONS]
 
-        # Update inventory button
         inventory_btn.content = ft.Row(
             [
-                ft.Text("\U0001f392", size=14),
+                ft.Text("🎒", size=14),
                 ft.Text(f"Inventory ({pet.inventory_count})", size=12,
                         color=theme.c["text"],
                         weight=ft.FontWeight.W_600),
