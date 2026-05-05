@@ -8,6 +8,7 @@ env/
 
 # App data
 vault.db
+pet_save.json
 
 # OS
 .DS_Store

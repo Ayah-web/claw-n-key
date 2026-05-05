@@ -8,6 +8,7 @@ import flet as ft
 from datetime import datetime
 from .theme import ThemeManager
 from .widgets import show_snack, open_dialog, close_dialog
+from backend.mailer import send_feedback_email
 
 
 def feedback_dialog(page, api, theme: ThemeManager):
@@ -159,7 +160,10 @@ def feedback_dialog(page, api, theme: ThemeManager):
             return
         title = (title_field.value or "").strip()
         fb_type = type_dropdown.value or "note"
+
         api.add_feedback(content, title, fb_type)
+        send_feedback_email(fb_type, title, content)
+
         content_field.value = ""
         title_field.value = ""
         show_snack(page, "✅ Saved!")
